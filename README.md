@@ -2,6 +2,11 @@
 
 An interactive, visual, and code-level deep dive into the Transformer architecture based on the seminal paper [*Attention Is All You Need* (Vaswani et al.)](https://arxiv.org/abs/1706.03762) and Harvard NLP's *The Annotated Transformer*.
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-blue?style=for-the-badge&logo=github)](https://murtuzasaifee.github.io/transformer_101/annotated_transformer_blueprint.html)
+
+> 🌐 **Interactive Web Guide:** Explore the visual companion directly in your browser:  
+> **[👉 View The Annotated Transformer Blueprint](https://murtuzasaifee.github.io/transformer_101/annotated_transformer_blueprint.html)**
+
 ---
 
 ## 🌟 Overview
@@ -18,7 +23,7 @@ It breaks down every component—from input embeddings and positional encodings 
 transformer_101/
 ├── annotated_transformer_blueprint.html  # Interactive visual blueprint & guide
 ├── notebooks/
-│   └── AnnotatedTransformer.ipynb# Step-by-step PyTorch implementation with extended explanations
+│   └── AnnotatedTransformer.ipynb        # Step-by-step PyTorch implementation with extended explanations
 ├── LICENSE                               # License details
 └── README.md                             # Project documentation
 ```
@@ -27,7 +32,7 @@ transformer_101/
 
 ## 🚀 Key Highlights
 
-### 1. 🎨 Interactive Visual Blueprint (`annotated_transformer_blueprint.html`)
+### 1. 🎨 Interactive Visual Blueprint ([Live Demo](https://murtuzasaifee.github.io/transformer_101/annotated_transformer_blueprint.html))
 An interactive HTML companion that provides:
 - **Architecture Breakdown**: Side-by-side explanations of the Encoder and Decoder stacks.
 - **Multi-Head Attention Demystified**: Visualizing Query ($Q$), Key ($K$), and Value ($V$) projections, scaled dot-product attention, and causal masking.
@@ -58,7 +63,9 @@ jupyter notebook notebooks/AnnotatedTransformer.ipynb
 ```
 
 ### Viewing the Interactive Blueprint
-Simply open `annotated_transformer_blueprint.html` in any modern web browser:
+
+- **Online (GitHub Pages)**: [murtuzasaifee.github.io/transformer_101/annotated_transformer_blueprint.html](https://murtuzasaifee.github.io/transformer_101/annotated_transformer_blueprint.html)
+- **Locally**: Open `annotated_transformer_blueprint.html` in any modern web browser:
 
 ```bash
 # macOS
