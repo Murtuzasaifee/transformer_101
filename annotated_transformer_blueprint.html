@@ -50,10 +50,19 @@ body::before{
   padding:8px 14px; border-radius:8px; cursor:pointer; border:none; background:none; white-space:nowrap;
 }
 .chapter-tab.active{background:var(--paper2); color:var(--ink); box-shadow:0 1px 3px rgba(33,28,20,0.12);}
-.chapter-tab .num{color:var(--red); margin-right:5px;}
-.menu-btn{display:none; font-family:var(--mono); font-size:13px; background:var(--paper3); border:1px solid var(--rule); padding:9px 13px; border-radius:9px; cursor:pointer; color:var(--ink);}
+.topbar-actions{display:flex; align-items:center; gap:10px;}
+.github-btn{
+  display:inline-flex; align-items:center; gap:7px; font-family:var(--mono); font-size:12.5px; font-weight:500;
+  color:var(--ink); background:var(--paper3); border:1px solid var(--rule-strong); padding:8px 14px;
+  border-radius:10px; text-decoration:none; transition:all .2s ease;
+}
+.github-btn:hover{
+  background:var(--paper2); color:var(--red); border-color:var(--red); transform:translateY(-1px);
+  box-shadow:0 3px 8px rgba(33,28,20,0.1);
+}
+.github-btn svg{flex-shrink:0; fill:currentColor;}
+@media(max-width:640px){ .chapter-tabs{display:none;} .brand{font-size:16px;} .github-btn span{display:none;} .github-btn{padding:8px 10px;} }
 @media(max-width:1000px){ .menu-btn{display:block;} .chapter-tabs .tab-label{display:none;} }
-@media(max-width:640px){ .chapter-tabs{display:none;} .brand{font-size:16px;} }
 
 /* ===== layout ===== */
 .shell{display:flex; padding-top:68px; max-width:1300px; margin:0 auto; position:relative;}
@@ -248,10 +257,16 @@ table.mgrid td.cell.blocked{background:var(--red-dim); color:var(--red);}
 <div class="topbar">
   <button class="menu-btn" id="menuBtn">☰</button>
   <div class="brand">The Annotated Transformer<span class="accent">.</span></div>
-  <div class="chapter-tabs">
-    <button class="chapter-tab active" data-chapter="1"><span class="num">01</span><span class="tab-label">Architecture</span></button>
-    <button class="chapter-tab" data-chapter="2"><span class="num">02</span><span class="tab-label">Training</span></button>
-    <button class="chapter-tab" data-chapter="3"><span class="num">03</span><span class="tab-label">Real World</span></button>
+  <div class="topbar-actions">
+    <div class="chapter-tabs">
+      <button class="chapter-tab active" data-chapter="1"><span class="num">01</span><span class="tab-label">Architecture</span></button>
+      <button class="chapter-tab" data-chapter="2"><span class="num">02</span><span class="tab-label">Training</span></button>
+      <button class="chapter-tab" data-chapter="3"><span class="num">03</span><span class="tab-label">Real World</span></button>
+    </div>
+    <a href="https://github.com/Murtuzasaifee/transformer_101" target="_blank" rel="noopener noreferrer" class="github-btn" title="View repository on GitHub">
+      <svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+      <span>GitHub</span>
+    </a>
   </div>
 </div>
 
@@ -936,6 +951,15 @@ decoder_cross = model.decoder.layers[layer].src_attn.attn      <span class="cm">
       <p class="body-text" style="font-size:13.5px; color:var(--ink-faint);">Illustrative pattern for encoder self-attention — actual weights depend on the trained checkpoint, but this is the same visualization shape as the notebook's <code>attn_map()</code>.</p>
       <div class="margin-note" style="max-width:600px;"><span class="mtag">Analogy</span>Like an X-ray of the model's reading habits: for "drill," you can see exactly which German word ("Bohrer") it was looking at most while writing it.</div>
     </section>
+
+    <div class="entry" style="border-top:1px solid var(--rule); margin-top:20px; padding:30px; text-align:center;">
+      <h3 style="font-family:var(--serif); font-size:22px; font-weight:600; margin-bottom:8px;">Ready to explore the code?</h3>
+      <p class="body-text" style="max-width:540px; margin:0 auto 18px; color:var(--ink-muted);">Check out the full PyTorch implementation, training scripts, and Jupyter notebooks in the official repository.</p>
+      <a href="https://github.com/Murtuzasaifee/transformer_101" target="_blank" rel="noopener noreferrer" class="github-btn" style="padding:10px 20px; font-size:14px;">
+        <svg width="18" height="18" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        <span>View on GitHub &rarr;</span>
+      </a>
+    </div>
 
   </article>
 
