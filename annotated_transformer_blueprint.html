@@ -552,18 +552,46 @@ table.mgrid td.cell.blocked{background:var(--red-dim); color:var(--red);}
           <div class="callout why" style="margin:10px 0 0; font-size:14px; padding:12px 14px;"><span class="ctag" style="font-size:10.5px;">Why scale by &radic;d_model?</span>Positional encodings (right) are bounded between -1 and 1. Without scaling, embedding values could be comparatively tiny next to the positional signal, letting position drown out word identity.</div>
         </div>
         <div class="subcard">
-          <h4>Positional Encoding</h4>
+          <h4>Positional Encoding — the formula</h4>
           <pre class="code" style="font-size:13px; color:var(--ink); background:none;">PE(pos,2i)   = sin(pos / 10000^(2i/d))
 PE(pos,2i+1) = cos(pos / 10000^(2i/d))</pre>
-          <p class="body-text" style="font-size:15px;">A fixed wave, computed once, added on top of every embedding so the model can tell word order apart.</p>
-          <table class="numtable" style="margin-top:10px; font-size:12px;">
-            <tr><th>pos</th><th>sin(pos)</th><th>cos(pos)</th></tr>
-            <tr><td>0</td><td class="hl">0.000</td><td>1.000</td></tr>
-            <tr><td>1</td><td class="hl">0.841</td><td>0.540</td></tr>
-            <tr><td>2</td><td class="hl">0.909</td><td>-0.416</td></tr>
-          </table>
-          <p class="body-text" style="font-size:12.5px; color:var(--ink-faint); margin-top:6px;">(dimension pair i=0, so the exponent term is 1 and this reduces to plain sin/cos of the position)</p>
+          <p class="body-text" style="font-size:15px;">A fixed wave, computed once, added on top of every embedding so the model can tell word order apart. The full explanation and an interactive diagram are just below.</p>
         </div>
+      </div>
+
+      <h4 style="font-family:var(--serif); font-size:21px; margin:32px 0 8px;">Positional encoding, unpacked</h4>
+      <p class="body-text">Attention has no built-in sense of order — fed "the cat sat" or "sat cat the," it treats the words identically unless something tells it otherwise. So before anything else happens, every word's vector gets a small "position stamp" added to it. Sin and cos waves are just a clever way to build that stamp.</p>
+
+      <p class="body-text"><b>Why not just add the plain position number (0, 1, 2, 3...)?</b> That's the obvious first idea, and it's worth seeing why it fails, because the failure is exactly what motivates sin/cos. The numbers grow without bound — position 500 contributes a "500," a wildly different scale than position 2's "2," which destabilizes training (this is exactly the kind of inconsistent scale LayerNorm, back in step 1.3, has to fight against). A raw integer also doesn't generalize — the model has to somehow learn "500 is far from 2" and "500 is close to 501" from scratch, for every possible number, with no structure to lean on.</p>
+
+      <p class="body-text">A sine wave fixes the boundedness problem immediately: it's always trapped between -1 and 1, no matter how large the position is. But a single wave alone isn't enough, because it <em>repeats</em> — <code>sin(position)</code> gives the same value at many different positions, any time the angle wraps back around. One wave can't tell position 3 apart from a position many cycles later that happens to land on the same point of the curve.</p>
+
+      <div class="callout walk"><span class="ctag">The clock-hands analogy</span>Think of a clock with an hour hand and a minute hand. The minute hand alone is ambiguous — it points to the same spot every single hour. But hour hand + minute hand <em>together</em> pin down the time precisely, because they move at different speeds and rarely repeat the same combination at the same moment. Positional encoding does exactly this with far more "hands": 256 pairs of them in the real model (512 dimensions), each pair spinning at its own speed — from very fast (dimension 0) to extremely slow (dimension 511). No single hand tells you the position on its own; all of them read together do.</div>
+
+      <p class="body-text">Drag the slider below to feel this directly. The strip of squares is one position's actual encoding — 16 numbers, colored by value. No two positions ever produce the same pattern, exactly like no two times of day share the same hour-and-minute combination. The heatmap underneath shows the full pattern across many dimensions (columns) and positions (rows). Notice the columns on the left flicker rapidly as the highlighted row moves down (fast "hands"), while columns on the right barely change (slow "hands") — that changing-frequency structure, fast on one side and slow on the other, is the entire mechanism. Reading down a single column looks ambiguous and repetitive; reading straight across a full row, all dimensions together, is unique to that position.</p>
+
+      <div class="subcard" style="padding:22px 22px 26px;">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px;">
+          <label for="peSlider" style="font-family:var(--mono); font-size:13px; color:var(--ink-muted); flex-shrink:0;">position in sentence</label>
+          <input type="range" min="0" max="49" value="5" step="1" id="peSlider" style="flex:1; accent-color:var(--indigo);">
+          <span id="pePosOut" style="font-family:var(--mono); font-size:14px; font-weight:600; color:var(--ink); min-width:26px; text-align:right;">5</span>
+        </div>
+        <div style="display:flex; gap:3px; margin-bottom:8px;" id="peFingerprint"></div>
+        <p class="body-text" style="font-size:12.5px; color:var(--ink-faint); margin:0 0 16px;">first 16 numbers of this position's encoding — its unique fingerprint (hover a square for its exact value)</p>
+        <canvas id="peCanvas" width="64" height="50" style="width:100%; height:220px; image-rendering:pixelated; border-radius:8px; border:1px solid var(--rule); display:block;"></canvas>
+        <div style="display:flex; justify-content:space-between; font-family:var(--mono); font-size:11px; color:var(--ink-faint); margin-top:6px;">
+          <span>dimension 0 — fastest wave</span><span>dimension 63 — slowest wave</span>
+        </div>
+        <div style="display:flex; gap:18px; margin-top:12px; font-family:var(--mono); font-size:12px; color:var(--ink-muted);">
+          <span style="display:flex; align-items:center; gap:6px;"><span style="width:11px; height:11px; border-radius:3px; background:var(--indigo); display:inline-block;"></span>negative</span>
+          <span style="display:flex; align-items:center; gap:6px;"><span style="width:11px; height:11px; border-radius:3px; background:var(--paper3); border:1px solid var(--rule); display:inline-block;"></span>near zero</span>
+          <span style="display:flex; align-items:center; gap:6px;"><span style="width:11px; height:11px; border-radius:3px; background:var(--red); display:inline-block;"></span>positive</span>
+        </div>
+      </div>
+
+      <div class="annotated" style="margin-top:24px;">
+        <p class="body-text" style="margin:0;">One more beginner-level question worth answering: why <em>add</em> this to the word embedding instead of appending it as extra dimensions? Addition keeps the vector size fixed at 512, so nothing about the rest of the architecture needs to change, and it puts the position signal and the word-meaning signal in the same 512-number space — later layers just learn to read whichever combination of "what word + where it sits" turns out to be useful.</p>
+        <div class="margin-note"><span class="mtag">Analogy</span>Like two musicians' sound waves layered into one recording — you can still make out both instruments, even though they now share the same single waveform.</div>
       </div>
     </section>
 
@@ -991,6 +1019,8 @@ function buildMiniAcc(containerId, items){
         ${item.code?`<div class="codepanel" style="margin-top:8px;"><pre class="code">${item.code}</pre></div>`:''}
         <p class="body-text">${item.explain}</p>
         ${item.numtable?item.numtable:''}
+        ${item.diagram?item.diagram:''}
+        ${item.how?`<div class="callout walk"><span class="ctag">How and where it's learned</span>${item.how}</div>`:''}
         ${item.why?`<div class="callout why"><span class="ctag">Why it matters</span>${item.why}</div>`:''}
         ${item.io?`<div class="ledger">${item.io}</div>`:''}
         ${item.analogy?`<div class="margin-note" style="max-width:600px;"><span class="mtag">Analogy</span>${item.analogy}</div>`:''}
@@ -1018,7 +1048,7 @@ buildMiniAcc('acc-encoder', [
         mean = x.mean(-1, keepdim=<span class="kw">True</span>)
         std = x.std(-1, keepdim=<span class="kw">True</span>)
         <span class="kw">return</span> self.a_2 * (x - mean) / (std + self.eps) + self.b_2`,
-   explain:'This does two separate things, and it is worth telling them apart. Step one is plain normalization: subtract the mean and divide by the standard deviation so the vector has mean ≈ 0 and spread ≈ 1 — the same 4 numbers, just rescaled. Step two is the part people gloss over: <b>a_2</b> ("scale" or "gain") and <b>b_2</b> ("shift" or "bias") are learnable parameters — one value per dimension of the vector — that stretch or shrink each dimension and re-center it, AFTER normalization.',
+   explain:'Think of this in two separate steps, since it is easy to blur them together. <b>Step one, normalize:</b> take the numbers in a word\'s vector and force them into a calm, predictable range — subtract the average, divide by the spread. No matter how wild the input numbers start out, you always land in the same tame range (average ≈ 0, spread ≈ 1). This is what keeps values from exploding or vanishing as they pass through 6 stacked layers. <b>Step two, scale and shift:</b> forcing every single dimension into that exact same neutral range might be too strict — some dimensions may matter more than others, or need to sit at a different center point. So the model is handed two extra learnable knobs per dimension, applied right after normalizing: a <b>scale</b> (stretches or shrinks that dimension) and a <b>shift</b> (moves it up or down).',
    numtable:`<table class="numtable">
      <tr><th>quantity</th><th>dim 0</th><th>dim 1</th><th>dim 2</th><th>dim 3</th></tr>
      <tr><th>x (raw input)</th><td>10</td><td>50</td><td>-30</td><td>8</td></tr>
@@ -1028,7 +1058,47 @@ buildMiniAcc('acc-encoder', [
      <tr><th>final output</th><td class="hl">0.021</td><td class="hl">1.245</td><td class="hl">-1.596</td><td class="hl">-0.079</td></tr>
    </table>
    <p class="body-text" style="font-size:14px; color:var(--ink-muted);">mean = (10+50-30+8)/4 = 9.5, std ≈ 28.3. Normalized values above are (x−9.5)/28.3. The final row multiplies by a_2 and adds b_2, dimension by dimension — dimension 2 gets amplified (×1.0) and pulled down (−0.2), while dimension 3 gets amplified 1.5× with no shift.</p>`,
-   why:'a_2 and b_2 start at exactly 1 and 0, so at the very beginning of training LayerNorm is pure, unmodified normalization — it has no effect beyond rescaling. As training proceeds, the model can learn ANY a_2 and b_2 it finds useful, including values that would fully reverse the normalization (setting a_2 back to the original standard deviation and b_2 back to the original mean). This matters because it means LayerNorm never permanently throws away information — it just gives the network a well-behaved starting point, while leaving it free to recover the raw scale for any dimension where that turns out to help.',
+   diagram:`<div class="subcard" style="margin:18px 0;">
+     <svg viewBox="0 0 700 300" xmlns="http://www.w3.org/2000/svg" style="width:100%; height:auto; display:block; font-family:'IBM Plex Mono',monospace;">
+       <defs><marker id="ln-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="context-stroke"/></marker></defs>
+
+       <rect x="20" y="20" width="110" height="50" rx="8" fill="var(--paper2)" stroke="var(--indigo)" stroke-width="1.2"/>
+       <text x="75" y="40" text-anchor="middle" font-size="12.5" fill="var(--ink)" font-weight="600">x</text>
+       <text x="75" y="58" text-anchor="middle" font-size="10.5" fill="var(--ink-muted)">raw vector</text>
+       <line x1="130" y1="45" x2="150" y2="45" stroke="var(--ink-faint)" stroke-width="1.2" marker-end="url(#ln-arrow)"/>
+
+       <rect x="150" y="20" width="140" height="50" rx="8" fill="var(--paper2)" stroke="var(--indigo)" stroke-width="1.2"/>
+       <text x="220" y="40" text-anchor="middle" font-size="12.5" fill="var(--ink)" font-weight="600">Normalize</text>
+       <text x="220" y="58" text-anchor="middle" font-size="10.5" fill="var(--ink-muted)">(x−mean)/std</text>
+       <line x1="290" y1="45" x2="310" y2="45" stroke="var(--ink-faint)" stroke-width="1.2" marker-end="url(#ln-arrow)"/>
+
+       <rect x="310" y="20" width="150" height="50" rx="8" fill="var(--paper2)" stroke="var(--indigo)" stroke-width="1.2"/>
+       <text x="385" y="40" text-anchor="middle" font-size="12.5" fill="var(--ink)" font-weight="600">Scale &amp; shift</text>
+       <text x="385" y="58" text-anchor="middle" font-size="10.5" fill="var(--ink-muted)">a2 · norm + b2</text>
+       <line x1="460" y1="45" x2="480" y2="45" stroke="var(--ink-faint)" stroke-width="1.2" marker-end="url(#ln-arrow)"/>
+
+       <rect x="480" y="20" width="110" height="50" rx="8" fill="var(--paper2)" stroke="var(--indigo)" stroke-width="1.2"/>
+       <text x="535" y="40" text-anchor="middle" font-size="12.5" fill="var(--ink)" font-weight="600">Output</text>
+       <text x="535" y="58" text-anchor="middle" font-size="10.5" fill="var(--ink-muted)">next layer</text>
+
+       <line x1="385" y1="130" x2="385" y2="72" stroke="var(--mustard)" stroke-width="1.3" marker-end="url(#ln-arrow)"/>
+       <rect x="310" y="130" width="150" height="50" rx="8" fill="var(--mustard-dim)" stroke="var(--mustard)" stroke-width="1.2"/>
+       <text x="385" y="150" text-anchor="middle" font-size="12" fill="var(--mustard)" font-weight="600">a2, b2</text>
+       <text x="385" y="167" text-anchor="middle" font-size="10.5" fill="var(--ink-muted)">learnable params</text>
+
+       <line x1="385" y1="220" x2="385" y2="182" stroke="var(--red)" stroke-width="1.3" stroke-dasharray="4 4" marker-end="url(#ln-arrow)"/>
+       <rect x="310" y="220" width="150" height="50" rx="8" fill="var(--red-dim)" stroke="var(--red)" stroke-width="1.2"/>
+       <text x="385" y="240" text-anchor="middle" font-size="12" fill="var(--red)" font-weight="600">Backward pass</text>
+       <text x="385" y="257" text-anchor="middle" font-size="10.5" fill="var(--ink-muted)">updates a2, b2</text>
+
+       <line x1="535" y1="70" x2="535" y2="245" stroke="var(--ink-faint)" stroke-width="1" opacity="0.5"/>
+       <line x1="535" y1="245" x2="462" y2="245" stroke="var(--ink-faint)" stroke-width="1" opacity="0.5" marker-end="url(#ln-arrow)"/>
+
+       <text x="20" y="292" font-size="10.5" fill="var(--ink-faint)">Solid mustard: used on every forward pass &nbsp;&nbsp;·&nbsp;&nbsp; Dashed red: corrected on every backward pass</text>
+     </svg>
+   </div>`,
+   how:'a_2 and b_2 are declared as <code>nn.Parameter</code> — the one word that tells PyTorch "this tensor is trainable, include it in the model." Because of that single word, they automatically get swept up into <code>model.parameters()</code> and handed to the optimizer alongside every attention weight and every embedding — there is no separate mechanism just for them. On every training step: the forward pass uses them in ordinary multiplication and addition (the mustard box in the diagram), the backward pass computes how much nudging each one would have changed the loss, and <code>optimizer.step()</code> nudges them a small amount in the direction that reduces it — exactly the same generic update rule applied to every other weight in the network. They start at scale=1, shift=0 (doing nothing extra), and drift away from that starting point only if doing so genuinely helps lower the loss.',
+   why:'Because a_2 and b_2 start at exactly 1 and 0, at the very beginning of training LayerNorm is pure, unmodified normalization — it has no effect beyond rescaling. As training proceeds, the model can learn ANY a_2 and b_2 it finds useful, including values that would fully reverse the normalization (setting a_2 back to the original standard deviation and b_2 back to the original mean). This matters because it means LayerNorm never permanently throws away information — it just gives the network a well-behaved starting point, while leaving it free to recover the raw scale for any dimension where that turns out to help.',
    io:``,
    analogy:'Normalizing is like turning every dimension\'s volume knob to the same neutral middle setting. a_2 and b_2 are the network then reaching in and nudging a few of those knobs back up or down to whatever level actually works best — some dimensions matter more than others, and the network learns which.'},
 
@@ -1243,6 +1313,55 @@ document.querySelectorAll('.mbtn[data-ls]').forEach(btn=>{
     renderLS(parseFloat(btn.getAttribute('data-ls')));
   });
 });
+
+/* ---------------- positional encoding fingerprint + heatmap ---------------- */
+(function(){
+  const slider = document.getElementById('peSlider');
+  const canvas = document.getElementById('peCanvas');
+  if(!slider || !canvas) return;
+  const ctx = canvas.getContext('2d');
+  const D = 64;
+  function pe(pos, dim){
+    const i = Math.floor(dim/2);
+    const freq = Math.pow(10000, -(2*i)/D);
+    const a = pos*freq;
+    return dim % 2 === 0 ? Math.sin(a) : Math.cos(a);
+  }
+  function lerp(a,b,t){ return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t]; }
+  const NEG = [42,61,143], MID = [239,233,220], POS = [166,58,58];
+  function colorFor(v){
+    const c = v < 0 ? lerp(MID, NEG, Math.min(-v,1)) : lerp(MID, POS, Math.min(v,1));
+    return `rgb(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])})`;
+  }
+  function drawHeat(highlightPos){
+    for(let p=0;p<50;p++){
+      for(let d=0;d<D;d++){
+        ctx.fillStyle = colorFor(pe(p,d));
+        ctx.fillRect(d,p,1,1);
+      }
+    }
+    ctx.fillStyle = 'rgba(34,29,21,0.85)';
+    ctx.fillRect(0, highlightPos, D, 1);
+  }
+  function drawFingerprint(pos){
+    const wrap = document.getElementById('peFingerprint');
+    wrap.innerHTML = '';
+    for(let d=0; d<16; d++){
+      const v = pe(pos, d);
+      const sq = document.createElement('div');
+      sq.style.cssText = `flex:1; aspect-ratio:1; border-radius:4px; background:${colorFor(v)};`;
+      sq.title = 'dim ' + d + ': ' + v.toFixed(2);
+      wrap.appendChild(sq);
+    }
+  }
+  function update(pos){
+    document.getElementById('pePosOut').textContent = pos;
+    drawHeat(pos);
+    drawFingerprint(pos);
+  }
+  slider.addEventListener('input', (e)=> update(parseInt(e.target.value)));
+  update(5);
+})();
 
 /* ---------------- attention heatmap ---------------- */
 const heatWords = ['Ein','kleiner','Junge','verwendet','Bohrer','.'];

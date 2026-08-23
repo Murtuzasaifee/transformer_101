@@ -18,8 +18,7 @@ It breaks down every component—from input embeddings and positional encodings 
 transformer_101/
 ├── annotated_transformer_blueprint.html  # Interactive visual blueprint & guide
 ├── notebooks/
-│   ├── AnnotatedTransformer.ipynb        # Step-by-step PyTorch implementation
-│   └── AnnotatedTransformer_Updated.ipynb# Enhanced notebook with extended explanations
+│   └── AnnotatedTransformer.ipynb# Step-by-step PyTorch implementation with extended explanations
 ├── LICENSE                               # License details
 └── README.md                             # Project documentation
 ```
@@ -55,7 +54,7 @@ pip install torch torchvision numpy matplotlib
 Launch JupyterLab or Jupyter Notebook:
 
 ```bash
-jupyter notebook notebooks/AnnotatedTransformer_Updated.ipynb
+jupyter notebook notebooks/AnnotatedTransformer.ipynb
 ```
 
 ### Viewing the Interactive Blueprint
