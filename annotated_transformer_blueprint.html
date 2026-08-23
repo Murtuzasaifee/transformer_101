@@ -800,37 +800,230 @@ PE(pos,2i+1) = cos(pos / 10000^(2i/d))</pre>
         true_dist.scatter_(1, target.data.unsqueeze(1), self.confidence)
         true_dist[:, self.padding_idx] = 0
         <span class="kw">return</span> self.criterion(x, true_dist)</pre></div>
-      <p class="body-text">Normally, training uses a "one-hot" target: 100% on the correct word, 0% everywhere else. Label smoothing softens that: <code>confidence</code> (e.g. 90%) on the correct word, and the leftover <code>smoothing</code> mass divided evenly across every other word.</p>
+
+      <p class="body-text">Think of this in two separate steps, the same way we pulled LayerNorm apart earlier. <b>Step one, build a softer target:</b> instead of the usual "one-hot" target (100% on the correct word, 0% everywhere else), construct a <code>true_dist</code> that puts <code>confidence</code> (e.g. 90%) on the correct word and spreads the leftover <code>smoothing</code> mass (e.g. 10%) evenly across every other real word — the padding column is explicitly zeroed out, since it isn't a real word to predict. <b>Step two, compare with KL divergence instead of ordinary cross-entropy:</b> <code>nn.KLDivLoss</code> measures how far the model's own predicted distribution is from this softened target, and that distance is what gets minimized during training.</p>
+
+      <div class="ledger">
+        <div class="ledger-title">Worked example — building true_dist (size=5, padding_idx=4, target=2, smoothing=0.1)</div>
+        <div class="ledger-row"><span class="lk">confidence</span><span class="lv">1.0 - 0.1 = 0.9</span></div>
+        <div class="ledger-row"><span class="lk">fill value</span><span class="lv">0.1 / (5-2) = 0.0333 per class</span></div>
+      </div>
+      <table class="numtable">
+        <tr><th>step</th><th>idx 0</th><th>idx 1</th><th>idx 2 (target)</th><th>idx 3</th><th>idx 4 (pad)</th></tr>
+        <tr><th>fill_(0.0333)</th><td>0.033</td><td>0.033</td><td>0.033</td><td>0.033</td><td>0.033</td></tr>
+        <tr><th>scatter_(confidence)</th><td>0.033</td><td>0.033</td><td class="hl">0.900</td><td>0.033</td><td>0.033</td></tr>
+        <tr><th>zero padding_idx</th><td>0.033</td><td>0.033</td><td class="hl">0.900</td><td>0.033</td><td class="hl">0.000</td></tr>
+      </table>
+      <p class="body-text" style="font-size:14px; color:var(--ink-muted);">Final row sums to 1.0 (0.9 + 0.033&times;3 &asymp; 1) — the mass reserved for padding never disappears, it's simply never allocated there in the first place, since <code>size - 2</code> excludes both the target column and the padding column from the split.</p>
+
+      <p class="body-text">The interactive bars below use exactly this example — vocabulary size 5, target word at index 2:</p>
       <div class="btn-row">
         <button class="mbtn active" data-ls="0">No smoothing</button>
         <button class="mbtn" data-ls="0.1">Smoothing = 0.1</button>
       </div>
       <div class="ls-bars" id="lsBars"></div>
       <p class="body-text" style="font-size:14px;">Target word: <b>index 2</b> of a 5-word example vocabulary.</p>
+
+      <h4 style="font-family:var(--serif); font-size:19px; margin:28px 0 4px;">The diagram — and an important difference from LayerNorm</h4>
+      <p class="body-text">In step 1.3 we saw LayerNorm's <code>a_2</code> and <code>b_2</code> get updated by every backward pass, because they're declared as <code>nn.Parameter</code>. LabelSmoothing has <b>no such parameters</b> — <code>smoothing = 0.1</code> is a fixed number the researcher chose before training even starts, and it never changes. What backpropagation actually adjusts, as a downstream effect of this modified loss, is every weight in the encoder and decoder — the smoothed target just changes what "correct" means when computing how wrong those weights currently are.</p>
+
+      <div class="subcard" style="margin:18px 0;">
+        <svg viewBox="0 0 600 250" xmlns="http://www.w3.org/2000/svg" style="width:100%; height:auto; display:block; font-family:'IBM Plex Mono',monospace;">
+          <defs><marker id="ls-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="context-stroke"/></marker></defs>
+
+          <rect x="20" y="20" width="160" height="50" rx="8" fill="var(--paper2)" stroke="var(--indigo)" stroke-width="1.2"/>
+          <text x="100" y="40" text-anchor="middle" font-size="12.5" fill="var(--ink)" font-weight="600">Model output</text>
+          <text x="100" y="58" text-anchor="middle" font-size="10.5" fill="var(--ink-muted)">log-probabilities</text>
+
+          <rect x="20" y="120" width="160" height="50" rx="8" fill="var(--paper3)" stroke="var(--ink-faint)" stroke-width="1.2" stroke-dasharray="4 3"/>
+          <text x="100" y="140" text-anchor="middle" font-size="12.5" fill="var(--ink-muted)" font-weight="600">LabelSmoothing</text>
+          <text x="100" y="158" text-anchor="middle" font-size="10.5" fill="var(--ink-faint)">fixed, smoothing=0.1</text>
+          <line x1="180" y1="145" x2="220" y2="145" stroke="var(--ink-faint)" stroke-width="1.2" marker-end="url(#ls-arrow)"/>
+
+          <rect x="220" y="120" width="150" height="50" rx="8" fill="var(--paper3)" stroke="var(--ink-faint)" stroke-width="1.2" stroke-dasharray="4 3"/>
+          <text x="295" y="140" text-anchor="middle" font-size="12.5" fill="var(--ink-muted)" font-weight="600">true_dist</text>
+          <text x="295" y="158" text-anchor="middle" font-size="10.5" fill="var(--ink-faint)">the softened target</text>
+
+          <line x1="180" y1="45" x2="405" y2="90" stroke="var(--ink-faint)" stroke-width="1.2" marker-end="url(#ls-arrow)"/>
+          <line x1="370" y1="145" x2="400" y2="110" stroke="var(--ink-faint)" stroke-width="1.2" marker-end="url(#ls-arrow)"/>
+
+          <rect x="400" y="70" width="140" height="60" rx="8" fill="var(--red-dim)" stroke="var(--red)" stroke-width="1.2"/>
+          <text x="470" y="92" text-anchor="middle" font-size="12.5" fill="var(--red)" font-weight="600">KLDivLoss</text>
+          <text x="470" y="110" text-anchor="middle" font-size="10.5" fill="var(--ink-muted)">compares the two</text>
+
+          <line x1="470" y1="130" x2="470" y2="170" stroke="var(--ink-faint)" stroke-width="1.2" marker-end="url(#ls-arrow)"/>
+          <rect x="400" y="170" width="140" height="50" rx="8" fill="var(--red-dim)" stroke="var(--red)" stroke-width="1.2"/>
+          <text x="470" y="190" text-anchor="middle" font-size="12.5" fill="var(--red)" font-weight="600">Loss value</text>
+          <text x="470" y="208" text-anchor="middle" font-size="10.5" fill="var(--ink-muted)">one number</text>
+
+          <path d="M400,195 L10,195 L10,45 L18,45" fill="none" stroke="var(--red)" stroke-width="1.3" stroke-dasharray="4 4" marker-end="url(#ls-arrow)"/>
+
+          <text x="20" y="242" font-size="10.5" fill="var(--ink-faint)">Dashed: gradients update the model's weights — LabelSmoothing itself has nothing to learn</text>
+        </svg>
+      </div>
+
+      <div class="callout walk"><span class="ctag">Why this actually works — not just what it does</span>
+        <p class="body-text" style="margin:0 0 8px;">All three rows below have the model correctly picking word index 2 as most likely. Only the confidence differs — watch what that alone does to the loss:</p>
+        <table class="numtable" style="margin:0;">
+          <tr><th>model's confidence at word 2</th><th>confidence at each other word</th><th>KL loss</th></tr>
+          <tr><td>90% (matches the target exactly)</td><td>&asymp;3.3% each</td><td class="hl">0.000</td></tr>
+          <tr><td>85%</td><td>5% each</td><td class="hl">0.011</td></tr>
+          <tr><td>99.9%</td><td>0.05% each</td><td class="hl">0.326</td></tr>
+        </table>
+        <p class="body-text" style="margin:10px 0 0;">The loss climbs sharply as the model pushes toward 99.9% confidence — nearly 30&times; higher than a moderate, well-calibrated prediction, despite getting the same word right in every case. That's the actual mechanism: because the target itself never exceeds 90% and never drops to exactly 0% anywhere, <code>KLDivLoss</code> penalizes a model for disagreeing with the target at <em>both</em> ends of the distribution — pushing the top word too high is punished exactly like pushing the other words too low.</p>
+      </div>
+
       <div class="callout why"><span class="ctag">Why make the target deliberately "fuzzier"?</span>A model trained against a perfectly confident target is pushed to make its own probabilities as extreme as possible, causing overconfidence and worse generalization to new sentences. Label smoothing caps that confidence — it measurably <em>hurts</em> perplexity but <em>improves</em> real translation quality and BLEU score.</div>
-      <div class="margin-note" style="max-width:600px;"><span class="mtag">Analogy</span>Like a teacher who rewards the correct answer strongly but still leaves a sliver of credit spread around the room, so the student never becomes smugly overconfident in exactly one answer.</div>
+      <div class="margin-note" style="max-width:600px;"><span class="mtag">Analogy</span>Like a teacher who rewards the correct answer strongly but still leaves a sliver of credit spread around the room, so the student never becomes smugly overconfident in exactly one answer — and who now also marks it wrong if you claim 100% certainty, since even the teacher never claims that.</div>
     </section>
 
     <!-- 2.5 -->
     <section class="entry" id="s-2-5">
       <div class="entry-eyebrow">STEP 2.5</div>
       <h2>A First Example: The Copy Task</h2>
-      <p class="dek">Before tackling real translation, train on a trivial "copy" task — the "hello world" that proves the whole pipeline works before investing hours of real training time.</p>
+      <p class="dek">Before tackling real translation, train on a trivial "copy" task — the "hello world" that proves the whole pipeline works before investing hours of real training time. This section walks through every moving part: the synthetic data, the loss computation, and the training driver that ties them together.</p>
 
+      <h4 style="font-family:var(--serif); font-size:19px; margin-bottom:4px;">Part A — Synthetic data</h4>
       <div class="codepanel"><div class="fname">data_gen()</div><pre class="code"><span class="kw">def</span> <span class="fn">data_gen</span>(V, batch_size, nbatches):
+    <span class="cm">"Generate random data for a src-tgt copy task."</span>
     <span class="kw">for</span> i <span class="kw">in</span> range(nbatches):
-        data = torch.randint(1, V, size=(batch_size, 10))   <span class="cm"># random ints, 10 per sentence</span>
-        data[:, 0] = 1                                        <span class="cm"># force a fixed start token</span>
-        <span class="kw">yield</span> Batch(data.clone(), data.clone(), 0)          <span class="cm"># src == tgt: echo the input back</span></pre></div>
-      <p class="body-text">Since <code>src</code> and <code>tgt</code> are the same random sequence, there's no real translation — the model just has to learn to echo its input, using the exact machinery already covered: masking (2.1), the training loop (2.2), the LR schedule (2.3), and label smoothing (2.4).</p>
-      <div class="callout walk"><span class="ctag">Watching it actually learn, over 20 epochs</span>
+        data = torch.randint(1, V, size=(batch_size, 10))   <span class="cm"># random ints from 1..V-1, 10 per sentence</span>
+        data[:, 0] = 1                                        <span class="cm"># force a fixed start token in column 0</span>
+        src = data.requires_grad_(<span class="kw">False</span>).clone().detach()
+        tgt = data.requires_grad_(<span class="kw">False</span>).clone().detach()
+        <span class="kw">yield</span> Batch(src, tgt, 0)          <span class="cm"># pad=0; src and tgt are literally the same tensor</span></pre></div>
+
+      <p class="body-text">Since <code>src</code> and <code>tgt</code> are copies of the exact same random sequence, there's no real translation happening — the model's job is simply to echo its input back out. But don't mistake "trivial" for "meaningless": this exercises the exact same machinery a real translation task needs — masking (2.1), the training loop (2.2), the LR schedule (2.3), and optionally label smoothing (2.4) — just with the answer key made as easy as possible, so any bug shows up immediately instead of hiding inside translation quality.</p>
+
+      <div class="ledger">
+        <div class="ledger-title">Worked example — one toy batch (V=11, batch_size=2, pad=0)</div>
+        <div class="ledger-row"><span class="lk">data (row 0)</span><span class="lv">[1, 4, 7, 2, 9, 3, 6, 1, 8, 5]</span></div>
+        <div class="ledger-row"><span class="lk">data (row 1)</span><span class="lv">[1, 8, 2, 5, 4, 9, 1, 7, 3, 6]</span></div>
+        <div class="ledger-row"><span class="lk">src</span><span class="lv">identical to data — passed straight into Batch()</span></div>
+      </div>
+      <p class="body-text">Now watch what <code>Batch(src, tgt, 0)</code> does to row 0, using exactly the same shifting logic from step 2.1:</p>
+      <table class="numtable">
+        <tr><th>position</th><td>0</td><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td><td>7</td><td>8</td></tr>
+        <tr><th>tgt (decoder input)</th><td>1</td><td>4</td><td>7</td><td>2</td><td>9</td><td>3</td><td>6</td><td>1</td><td>8</td></tr>
+        <tr><th>tgt_y (labels)</th><td class="hl">4</td><td class="hl">7</td><td class="hl">2</td><td class="hl">9</td><td class="hl">3</td><td class="hl">6</td><td class="hl">1</td><td class="hl">8</td><td class="hl">5</td></tr>
+      </table>
+      <div class="ledger">
+        <div class="ledger-row"><span class="lk">src_mask</span><span class="lv">all True — every value is 1&ndash;10, and pad=0 never appears in this synthetic data</span></div>
+        <div class="ledger-row"><span class="lk">tgt_mask</span><span class="lv">effectively pure subsequent_mask, for the same reason</span></div>
+        <div class="ledger-row"><span class="lk">ntokens</span><span class="lv">9 + 9 = 18 across the 2-row batch</span></div>
+      </div>
+      <div class="callout why"><span class="ctag">A subtle but important detail</span>Because <code>pad=0</code> and every real value is drawn from 1&ndash;10, the padding half of the mask machinery from step 2.1 never actually triggers here — there's nothing to mask out. Only the subsequent-position rule does any real work in this toy task. The padding logic only becomes visible once Part 3 introduces real sentences of different lengths that genuinely need it.</div>
+
+      <h4 style="font-family:var(--serif); font-size:19px; margin:28px 0 4px;">Part B — Loss computation</h4>
+      <div class="codepanel"><div class="fname">SimpleLossCompute</div><pre class="code"><span class="kw">class</span> <span class="fn">SimpleLossCompute</span>:
+    <span class="kw">def</span> __init__(self, generator, criterion):
+        self.generator = generator     <span class="cm"># the Generator from step 1.2</span>
+        self.criterion = criterion     <span class="cm"># LabelSmoothing from step 2.4</span>
+
+    <span class="kw">def</span> __call__(self, x, y, norm):
+        x = self.generator(x)                    <span class="cm"># raw decoder output -> log-probabilities</span>
+        sloss = self.criterion(
+            x.contiguous().view(-1, x.size(-1)),  <span class="cm"># flatten: every position becomes one example</span>
+            y.contiguous().view(-1),
+        ) / norm                                  <span class="cm"># normalize by real-token count</span>
+        <span class="kw">return</span> sloss.data * norm, sloss           <span class="cm"># (un-normalized total, normalized-for-backward)</span></pre></div>
+
+      <p class="body-text">Two details here reward close reading. First, this is where the Generator finally gets applied — <code>x = self.generator(x)</code> — confirming what step 1.2 said: the raw <code>EncoderDecoder.forward()</code> output is not yet a probability, and the loss function is exactly where that conversion happens. Second, notice the <code>.view(-1, x.size(-1))</code> reshape: a batch of shape <code>[2, 9, 11]</code> (2 sentences, 9 positions, 11 vocab words) becomes <code>[18, 11]</code> — every single position, in every sentence, is treated as one independent word-prediction example for the loss function, which is also exactly why <code>ntokens</code> from step 2.1 (18, in our worked example above) is the right number to normalize by.</p>
+
+      <div class="callout why"><span class="ctag">Why return two different loss values?</span><code>sloss</code> (divided by <code>norm</code>) is what <code>.backward()</code> is actually called on — using the <em>per-token average</em> keeps gradient sizes consistent regardless of how many tokens happened to be in this particular batch. But <code>sloss.data * norm</code> undoes that division again, returning the <em>un-normalized total</em>. That's not redundant: <code>run_epoch</code> (step 2.2) sums this raw total across every batch in the epoch, and only divides by the grand total token count at the very end. Dividing by <code>norm</code> twice — once here, once again in run_epoch's average-of-averages — would silently under-weight large batches and over-weight small ones.</div>
+
+      <h4 style="font-family:var(--serif); font-size:19px; margin:28px 0 4px;">Part C — Putting it together</h4>
+      <div class="codepanel"><div class="fname">example_simple_model()</div><pre class="code"><span class="kw">def</span> <span class="fn">example_simple_model</span>():
+    V = 11                                                      <span class="cm"># tiny vocabulary: tokens 0-10</span>
+    criterion = LabelSmoothing(size=V, padding_idx=0, smoothing=0.0)   <span class="cm"># smoothing OFF for this toy task</span>
+    model = make_model(V, V, N=2)                               <span class="cm"># only 2 layers — plenty for this task</span>
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.5, betas=(0.9, 0.98), eps=1e-9)
+    lr_scheduler = LambdaLR(
+        optimizer=optimizer,
+        lr_lambda=<span class="kw">lambda</span> step: rate(step, model_size=model.src_embed[0].d_model, factor=1.0, warmup=400),
+    )
+    batch_size = 80
+    <span class="kw">for</span> epoch <span class="kw">in</span> range(20):
+        model.train()                                           <span class="cm"># dropout ON</span>
+        run_epoch(data_gen(V, batch_size, 20), model,
+                  SimpleLossCompute(model.generator, criterion),
+                  optimizer, lr_scheduler, mode="train")
+        model.eval()                                             <span class="cm"># dropout OFF</span>
+        run_epoch(data_gen(V, batch_size, 5), model,
+                  SimpleLossCompute(model.generator, criterion),
+                  DummyOptimizer(), DummyScheduler(), mode="eval")[0]</pre></div>
+
+      <p class="body-text">Every choice here is deliberate, and worth reading as a checklist rather than skimming past:</p>
+      <ul class="plist">
+        <li><b>smoothing=0.0</b> — label smoothing is explicitly turned <em>off</em> for this toy task. It's a regularizer for generalizing to unseen real sentences; a model memorizing a trivial copy pattern doesn't need it.</li>
+        <li><b>N=2</b>, not the usual 6 — a much shallower model. This task doesn't need deep representational capacity, and a smaller model trains faster for a demo.</li>
+        <li><b>lr=0.5</b> — this is the base multiplier fed into <code>rate()</code> from step 2.3, not the actual learning rate used at any single step; the real, moment-to-moment learning rate is <code>0.5 &times; rate(step, ...)</code>, still ramping up over <code>warmup=400</code> steps and decaying after.</li>
+        <li><b>model.train() / model.eval()</b>, called every epoch — this toggles <code>Dropout</code> layers (used inside <code>SublayerConnection</code> and <code>PositionwiseFeedForward</code>) on and off. During <code>"train"</code> mode, dropout randomly zeroes some values as a regularizer and the optimizer updates weights. During <code>"eval"</code> mode, dropout is disabled and <code>DummyOptimizer</code>/<code>DummyScheduler</code> (no-op stand-ins, defined once near the top of the notebook) make sure nothing changes — this epoch is purely measuring how the model is doing, not training it further.</li>
+      </ul>
+
+      <div class="subcard" style="margin:18px 0;">
+        <svg viewBox="0 0 680 330" xmlns="http://www.w3.org/2000/svg" style="width:100%; height:auto; display:block; font-family:'IBM Plex Mono',monospace;">
+          <defs><marker id="ct-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="context-stroke"/></marker></defs>
+
+          <rect x="20" y="20" width="100" height="50" rx="8" fill="var(--paper2)" stroke="var(--indigo)" stroke-width="1.2"/>
+          <text x="70" y="40" text-anchor="middle" font-size="12" fill="var(--ink)" font-weight="600">data_gen</text>
+          <text x="70" y="58" text-anchor="middle" font-size="10" fill="var(--ink-muted)">random batch</text>
+          <line x1="120" y1="45" x2="140" y2="45" stroke="var(--ink-faint)" stroke-width="1.2" marker-end="url(#ct-arrow)"/>
+
+          <rect x="140" y="20" width="110" height="50" rx="8" fill="var(--paper2)" stroke="var(--indigo)" stroke-width="1.2"/>
+          <text x="195" y="40" text-anchor="middle" font-size="12" fill="var(--ink)" font-weight="600">Batch</text>
+          <text x="195" y="58" text-anchor="middle" font-size="10" fill="var(--ink-muted)">shift + masks</text>
+          <line x1="250" y1="45" x2="270" y2="45" stroke="var(--ink-faint)" stroke-width="1.2" marker-end="url(#ct-arrow)"/>
+
+          <rect x="270" y="20" width="130" height="50" rx="8" fill="var(--paper2)" stroke="var(--indigo)" stroke-width="1.2"/>
+          <text x="335" y="40" text-anchor="middle" font-size="12" fill="var(--ink)" font-weight="600">model.forward()</text>
+          <text x="335" y="58" text-anchor="middle" font-size="10" fill="var(--ink-muted)">encode + decode</text>
+          <line x1="400" y1="45" x2="420" y2="45" stroke="var(--ink-faint)" stroke-width="1.2" marker-end="url(#ct-arrow)"/>
+
+          <rect x="420" y="20" width="150" height="50" rx="8" fill="var(--paper2)" stroke="var(--indigo)" stroke-width="1.2"/>
+          <text x="495" y="40" text-anchor="middle" font-size="12" fill="var(--ink)" font-weight="600">SimpleLossCompute</text>
+          <text x="495" y="58" text-anchor="middle" font-size="10" fill="var(--ink-muted)">generator + loss</text>
+
+          <line x1="460" y1="70" x2="415" y2="120" stroke="var(--ink-faint)" stroke-width="1.2" marker-end="url(#ct-arrow)"/>
+          <line x1="520" y1="70" x2="585" y2="120" stroke="var(--ink-faint)" stroke-width="1.2" marker-end="url(#ct-arrow)"/>
+
+          <rect x="340" y="120" width="150" height="50" rx="8" fill="var(--red-dim)" stroke="var(--red)" stroke-width="1.2"/>
+          <text x="415" y="140" text-anchor="middle" font-size="12" fill="var(--red)" font-weight="600">train mode</text>
+          <text x="415" y="158" text-anchor="middle" font-size="10" fill="var(--ink-muted)">backward + step()</text>
+
+          <rect x="510" y="120" width="150" height="50" rx="8" fill="var(--paper3)" stroke="var(--ink-faint)" stroke-width="1.2" stroke-dasharray="4 3"/>
+          <text x="585" y="140" text-anchor="middle" font-size="12" fill="var(--ink-muted)" font-weight="600">eval mode</text>
+          <text x="585" y="158" text-anchor="middle" font-size="10" fill="var(--ink-faint)">DummyOptimizer, no-op</text>
+
+          <text x="415" y="192" text-anchor="middle" font-size="10.5" fill="var(--ink-faint)">each epoch runs train, then eval</text>
+          <path d="M415,200 L415,215 L50,215 L50,72 L18,72" fill="none" stroke="var(--indigo)" stroke-width="1.3" marker-end="url(#ct-arrow)"/>
+          <text x="140" y="230" text-anchor="middle" font-size="10.5" fill="var(--ink-faint)">repeat for 20 epochs</text>
+
+          <line x1="490" y1="215" x2="490" y2="240" stroke="var(--ink-faint)" stroke-width="1.2" marker-end="url(#ct-arrow)"/>
+          <rect x="390" y="240" width="220" height="55" rx="8" fill="var(--teal-dim)" stroke="var(--teal)" stroke-width="1.2"/>
+          <text x="500" y="260" text-anchor="middle" font-size="12" fill="var(--teal)" font-weight="600">greedy_decode(test input)</text>
+          <text x="500" y="278" text-anchor="middle" font-size="10" fill="var(--ink-muted)">runs once, after all 20 epochs</text>
+
+          <text x="20" y="322" font-size="10.5" fill="var(--ink-faint)">Solid red: weights change &nbsp;&middot;&nbsp; Dashed gray: weights frozen, loss only measured</text>
+        </svg>
+      </div>
+
+      <p class="body-text">After the 20-epoch loop finishes, the notebook runs the trained model through <code>greedy_decode</code> (fully explained in step 3.4) on a fixed test input to see what it actually learned:</p>
+      <div class="ledger">
+        <div class="ledger-row"><span class="lk">test input</span><span class="lv">src = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]</span></div>
+        <div class="ledger-row"><span class="lk">before training</span><span class="lv">out = [0, 3, 4, 4, 4, 4, 4, 4, 4, 4] — pure noise</span></div>
+        <div class="ledger-row"><span class="lk">after 20 epochs</span><span class="lv">out = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] — a perfect copy</span></div>
+      </div>
+
+      <div class="callout walk"><span class="ctag">Watching it actually learn</span>
         <ol>
-          <li><span class="wn">Epoch 0:</span> <code>src=[0,1,2,3,4,5,6,7,8,9]</code> &rarr; <code>out=[0,3,4,4,4,4,4,4,4,4]</code> — pure noise.</li>
-          <li><span class="wn">Epoch ~5:</span> loss has dropped substantially; some positions are correct, not all.</li>
-          <li><span class="wn">Epoch 20:</span> <code>src=[0,1,2,3,4,5,6,7,8,9]</code> &rarr; <code>out=[0,1,2,3,4,5,6,7,8,9]</code> — a perfect copy.</li>
+          <li><span class="wn">Epoch 0:</span> weights are freshly Xavier-initialized (step 1.8) — the model hasn't seen a single batch yet, output is essentially random.</li>
+          <li><span class="wn">Epoch ~5:</span> the loss reported by <code>run_epoch</code> has dropped substantially; some positions in the output are already correct, not all.</li>
+          <li><span class="wn">Epoch 20:</span> loss has settled near its floor for this task; greedy decoding reproduces the input exactly, position for position.</li>
         </ol>
       </div>
-      <div class="margin-note" style="max-width:600px;"><span class="mtag">Analogy</span>Like teaching a child to repeat a sequence of numbers back to you — trivial for a human, but it confirms every gear in the machine turns correctly before scaling up to real language.</div>
+
+      <div class="margin-note" style="max-width:600px;"><span class="mtag">Analogy</span>Like teaching a child to repeat a sequence of numbers back to you — trivial for a human, but it confirms every gear in the machine (masking, the loss, the optimizer, greedy decoding) turns correctly before scaling up to real language in Part 3, where mistakes are far harder to spot.</div>
     </section>
 
     <div class="chapter-nav"><button class="next-chapter-btn" data-goto="3">Continue to Part 3 — A Real World Example &rarr;</button></div>
