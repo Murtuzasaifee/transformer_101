@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Transformer Blueprint</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #0a121d;
+    --bg-panel: #101b2b;
+    --bg-panel-2: #0d1826;
+    --grid-line: rgba(140,180,215,0.07);
+    --ink: #e8edf3;
+    --ink-muted: #8ea0b6;
+    --ink-faint: #5b6d82;
+    --amber: #e0954f;
+    --amber-dim: rgba(224,149,79,0.15);
+    --cyan: #63b3d6;
+    --cyan-dim: rgba(99,179,214,0.14);
+    --ok: #6fcf97;
+    --ok-dim: rgba(111,207,151,0.16);
+    --blocked: #c56b6b;
+    --blocked-dim: rgba(197,107,107,0.14);
+    --border: rgba(140,180,215,0.16);
+    --radius: 10px;
+    --mono: 'IBM Plex Mono', monospace;
+    --display: 'Space Grotesk', sans-serif;
+    --body: 'IBM Plex Sans', sans-serif;
+  }
+
+  *{box-sizing:border-box; margin:0; padding:0;}
+
+  html{scroll-behavior:smooth;}
+
+  body{
+    background:
+      linear-gradient(var(--grid-line) 1px, transparent 1px) 0 0/48px 48px,
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px) 0 0/48px 48px,
+      var(--bg);
+    color:var(--ink);
+    font-family:var(--body);
+    line-height:1.55;
+    padding-bottom:80px;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    html{scroll-behavior:auto;}
+    *{animation-duration:0.01ms !important; transition-duration:0.01ms !important;}
+  }
+
+  a{color:inherit;}
+
+  ::selection{background:var(--amber-dim); color:var(--ink);}
+
+  /* ---------- Nav ---------- */
+  .navbar{
+    position:sticky; top:0; z-index:50;
+    background:rgba(10,18,29,0.88);
+    backdrop-filter: blur(10px);
+    border-bottom:1px solid var(--border);
+  }
+  .nav-inner{
+    max-width:1040px; margin:0 auto;
+    display:flex; align-items:center; gap:18px;
+    padding:14px 24px;
+    overflow-x:auto;
+    scrollbar-width:none;
+  }
+  .nav-inner::-webkit-scrollbar{display:none;}
+  .brand{
+    font-family:var(--display); font-weight:700; font-size:15px;
+    letter-spacing:0.02em; color:var(--ink); white-space:nowrap;
+    display:flex; align-items:center; gap:8px;
+  }
+  .brand .dot{width:8px;height:8px;border-radius:50%;background:var(--amber); box-shadow:0 0 8px var(--amber);}
+  .nav-links{display:flex; gap:4px; white-space:nowrap;}
+  .nav-links a{
+    font-size:12.5px; font-family:var(--mono); color:var(--ink-muted);
+    padding:6px 11px; border-radius:20px; text-decoration:none;
+    border:1px solid transparent;
+    transition:all .2s ease;
+  }
+  .nav-links a:hover{color:var(--ink); border-color:var(--border);}
+  .nav-links a.active{color:var(--amber); background:var(--amber-dim); border-color:rgba(224,149,79,0.3);}
+
+  /* ---------- Layout helpers ---------- */
+  .wrap{max-width:1040px; margin:0 auto; padding:0 24px;}
+  section{padding:88px 0 0;}
+  .eyebrow{
+    font-family:var(--mono); font-size:12px; letter-spacing:0.14em; text-transform:uppercase;
+    color:var(--amber); display:flex; align-items:center; gap:10px; margin-bottom:14px;
+  }
+  .eyebrow::before{content:''; width:22px; height:1px; background:var(--amber);}
+  h2{
+    font-family:var(--display); font-size:clamp(26px,3.4vw,36px); font-weight:600;
+    letter-spacing:-0.01em; margin-bottom:14px;
+  }
+  .lede{color:var(--ink-muted); font-size:16px; max-width:680px; margin-bottom:36px;}
+  code, .mono{font-family:var(--mono);}
+
+  /* ---------- Hero ---------- */
+  .hero{
+    padding:120px 0 90px;
+    position:relative;
+    overflow:hidden;
+  }
+  .hero-inner{max-width:1040px; margin:0 auto; padding:0 24px; position:relative;}
+  .hero .eyebrow{margin-bottom:22px;}
+  .hero h1{
+    font-family:var(--display); font-weight:700;
+    font-size:clamp(38px,6vw,64px); line-height:1.04; letter-spacing:-0.02em;
+    max-width:780px;
+  }
+  .hero h1 span{color:var(--amber);}
+  .hero p.sub{
+    margin-top:22px; font-size:18px; color:var(--ink-muted); max-width:560px;
+  }
+  .scan-line{
+    position:absolute; left:0; right:0; height:1px;
+    background:linear-gradient(90deg, transparent, var(--cyan), transparent);
+    opacity:0.5;
+    animation:scan 6s linear infinite;
+  }
+  @keyframes scan{
+    0%{top:0%; opacity:0;}
+    10%{opacity:.6;}
+    90%{opacity:.6;}
+    100%{top:100%; opacity:0;}
+  }
+  .corner{position:absolute; width:18px; height:18px; border-color:var(--ink-faint); opacity:0.6;}
+  .corner.tl{top:24px; left:24px; border-top:1px solid; border-left:1px solid;}
+  .corner.br{bottom:24px; right:24px; border-bottom:1px solid; border-right:1px solid;}
+
+  .hero-tags{display:flex; flex-wrap:wrap; gap:10px; margin-top:34px;}
+  .tag{
+    font-family:var(--mono); font-size:11.5px; color:var(--cyan);
+    border:1px solid rgba(99,179,214,0.3); background:var(--cyan-dim);
+    padding:5px 10px; border-radius:20px;
+  }
+
+  /* ---------- Cards / panels ---------- */
+  .panel{
+    background:var(--bg-panel);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:22px 24px;
+  }
+  .panel + .panel{margin-top:14px;}
+
+  .analogy{
+    margin-top:14px;
+    border-left:2px solid var(--amber);
+    background:var(--amber-dim);
+    padding:10px 14px;
+    border-radius:0 8px 8px 0;
+    font-size:14px; color:var(--ink);
+  }
+  .analogy b{color:var(--amber); font-family:var(--mono); font-size:11px; letter-spacing:0.08em; text-transform:uppercase; display:block; margin-bottom:4px;}
+
+  .io-example{
+    margin-top:14px;
+    background:var(--bg-panel-2);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:14px 16px;
+    font-family:var(--mono);
+    font-size:12.5px;
+    color:var(--ink-muted);
+    overflow-x:auto;
+  }
+  .io-example .row{display:flex; gap:10px; margin:2px 0;}
+  .io-example .k{color:var(--cyan); min-width:64px; flex-shrink:0;}
+  .io-example .arrow{color:var(--amber);}
+
+  /* ---------- Accordion ---------- */
+  .accordion-item{
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    background:var(--bg-panel);
+    margin-bottom:10px;
+    overflow:hidden;
+  }
+  .accordion-head{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:16px; padding:16px 20px; cursor:pointer; user-select:none;
+  }
+  .accordion-head:hover{background:rgba(255,255,255,0.02);}
+  .accordion-title{display:flex; align-items:center; gap:12px;}
+  .accordion-num{
+    font-family:var(--mono); font-size:11px; color:var(--ink-faint);
+    border:1px solid var(--border); border-radius:5px; padding:2px 6px;
+  }
+  .accordion-name{font-family:var(--display); font-weight:600; font-size:16px;}
+  .accordion-sub{font-family:var(--mono); font-size:12px; color:var(--ink-faint); display:none;}
+  @media(min-width:640px){.accordion-sub{display:inline;}}
+  .chevron{
+    width:20px; height:20px; flex-shrink:0; color:var(--ink-faint);
+    transition:transform .25s ease;
+  }
+  .accordion-item.open .chevron{transform:rotate(180deg); color:var(--amber);}
+  .accordion-body{
+    max-height:0; overflow:hidden; transition:max-height .35s ease;
+  }
+  .accordion-body-inner{padding:0 20px 22px;}
+  .accordion-item.open .accordion-body{max-height:1400px;}
+
+  pre.code{
+    background:var(--bg-panel-2); border:1px solid var(--border);
+    border-radius:8px; padding:14px 16px; overflow-x:auto;
+    font-family:var(--mono); font-size:12.3px; color:#b9c9da; margin:14px 0;
+    line-height:1.6;
+  }
+  .code .kw{color:#e0954f;}
+  .code .fn{color:#63b3d6;}
+  .code .cm{color:#5b6d82; font-style:italic;}
+
+  p.explain{color:var(--ink-muted); font-size:14.5px; margin-top:8px;}
+  p.explain strong{color:var(--ink);}
+
+  /* ---------- Flow diagram (big picture) ---------- */
+  .flow-wrap{
+    background:var(--bg-panel); border:1px solid var(--border); border-radius:var(--radius);
+    padding:28px 20px 20px;
+  }
+  svg.flow{width:100%; height:auto; display:block;}
+  .flow-node rect{
+    fill:var(--bg-panel-2); stroke:var(--border); stroke-width:1.3;
+    transition:all .2s ease;
+  }
+  .flow-node text{
+    font-family:var(--mono); fill:var(--ink-muted); font-size:12px;
+  }
+  .flow-node .label{fill:var(--ink); font-family:var(--display); font-size:13px; font-weight:600;}
+  .flow-node{cursor:pointer;}
+  .flow-node:hover rect{stroke:var(--cyan); fill:rgba(99,179,214,0.08);}
+  .flow-node.active rect{stroke:var(--amber); fill:var(--amber-dim);}
+  .flow-node.active .label{fill:var(--amber);}
+  .flow-arrow{stroke:var(--ink-faint); stroke-width:1.4; fill:none; marker-end:url(#arrowhead);}
+  .flow-caption{fill:var(--ink-faint); font-family:var(--mono); font-size:10.5px;}
+
+  #flow-detail{
+    margin-top:18px;
+  }
+  #flow-detail .dtitle{font-family:var(--display); font-weight:600; color:var(--amber); font-size:15px; margin-bottom:6px;}
+
+  /* ---------- Masking demo ---------- */
+  .mask-controls{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px;}
+  .mbtn{
+    font-family:var(--mono); font-size:12.5px; color:var(--ink-muted);
+    background:var(--bg-panel-2); border:1px solid var(--border);
+    padding:8px 14px; border-radius:20px; cursor:pointer; transition:all .2s ease;
+  }
+  .mbtn:hover{color:var(--ink); border-color:var(--cyan);}
+  .mbtn.active{color:var(--amber); border-color:var(--amber); background:var(--amber-dim);}
+
+  .mask-grid-wrap{display:flex; gap:18px; flex-wrap:wrap; align-items:flex-start;}
+  table.mgrid{border-collapse:collapse; font-family:var(--mono); font-size:11.5px;}
+  table.mgrid th, table.mgrid td{
+    width:52px; height:38px; text-align:center; border:1px solid var(--border);
+  }
+  table.mgrid th{color:var(--ink-faint); font-weight:400; font-size:10.5px;}
+  table.mgrid td.cell{
+    background:var(--bg-panel-2); color:var(--ink-faint);
+    transition:all .25s ease;
+  }
+  table.mgrid td.cell.allowed{background:var(--ok-dim); color:var(--ok);}
+  table.mgrid td.cell.blocked{background:var(--blocked-dim); color:var(--blocked);}
+  .mask-legend{display:flex; gap:16px; margin-top:14px; font-size:12px; color:var(--ink-muted); flex-wrap:wrap;}
+  .mask-legend span{display:inline-flex; align-items:center; gap:6px;}
+  .swatch{width:12px; height:12px; border-radius:3px; display:inline-block;}
+
+  /* ---------- Attention demo ---------- */
+  .attn-words{display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;}
+  .wbtn{
+    font-family:var(--mono); font-size:13px; padding:9px 16px; border-radius:8px;
+    background:var(--bg-panel-2); border:1px solid var(--border); color:var(--ink-muted);
+    cursor:pointer; transition:all .2s ease;
+  }
+  .wbtn:hover{border-color:var(--cyan);}
+  .wbtn.active{border-color:var(--amber); color:var(--amber); background:var(--amber-dim);}
+  .bar-row{display:flex; align-items:center; gap:12px; margin-bottom:10px;}
+  .bar-label{font-family:var(--mono); font-size:12.5px; width:60px; color:var(--ink-muted); flex-shrink:0;}
+  .bar-track{flex:1; height:20px; background:var(--bg-panel-2); border-radius:5px; overflow:hidden; border:1px solid var(--border);}
+  .bar-fill{height:100%; background:linear-gradient(90deg, var(--cyan), var(--amber)); width:0%; transition:width .5s ease;}
+  .bar-pct{font-family:var(--mono); font-size:12px; width:44px; text-align:right; color:var(--ink-faint);}
+
+  /* ---------- Forward/backward toggle ---------- */
+  .fb-toggle{display:flex; gap:8px; margin-bottom:18px;}
+  .ff-diagram{
+    display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+    font-family:var(--mono); font-size:12.5px; padding:18px; background:var(--bg-panel-2);
+    border:1px solid var(--border); border-radius:8px;
+  }
+  .ff-step{
+    padding:8px 12px; border-radius:6px; border:1px solid var(--border); color:var(--ink-muted);
+    background:var(--bg-panel); transition:all .3s ease;
+  }
+  .ff-arrow{color:var(--ink-faint); transition:all .3s ease; font-size:14px;}
+  .ff-diagram.forward .ff-step{border-color:rgba(99,179,214,0.4); color:var(--cyan);}
+  .ff-diagram.forward .ff-arrow{color:var(--cyan);}
+  .ff-diagram.backward .ff-step{border-color:rgba(224,149,79,0.4); color:var(--amber);}
+  .ff-diagram.backward .ff-arrow{color:var(--amber); transform:scaleX(-1); display:inline-block;}
+
+  /* ---------- Two-col grid ---------- */
+  .two-col{display:grid; grid-template-columns:1fr; gap:14px;}
+  @media(min-width:760px){.two-col{grid-template-columns:1fr 1fr;}}
+
+  /* ---------- footer / next up ---------- */
+  .next-up{
+    margin-top:110px; padding:36px 0 10px;
+    border-top:1px solid var(--border);
+    text-align:center;
+  }
+  .next-up p{color:var(--ink-faint); font-family:var(--mono); font-size:12.5px;}
+
+  .section-divider{height:1px; background:var(--border); margin:70px 0 0;}
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="nav-inner" id="nav-inner">
+    <div class="brand"><span class="dot"></span>TRANSFORMER.BLUEPRINT</div>
+    <div class="nav-links">
+      <a href="#big-picture">Big picture</a>
+      <a href="#encoder">Encoder</a>
+      <a href="#decoder">Decoder</a>
+      <a href="#masking">Masking</a>
+      <a href="#attention">Attention</a>
+      <a href="#feedforward">Feed-forward</a>
+      <a href="#embeddings">Embeddings</a>
+      <a href="#assembly">Assembly</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ================= HERO ================= -->
+<header class="hero">
+  <div class="scan-line"></div>
+  <div class="corner tl"></div>
+  <div class="corner br"></div>
+  <div class="hero-inner">
+    <div class="eyebrow">Annotated &mdash; Read Time ~15 min</div>
+    <h1>The Transformer is a <span>pipeline</span>,<br>not a mystery.</h1>
+    <p class="sub">Every "black box" in this architecture is really just a small, understandable function passing numbers to the next one. This is a walkthrough of the actual code, one block at a time &mdash; with plain-English explanations, worked examples, and analogies for every piece.</p>
+    <div class="hero-tags">
+      <span class="tag">EncoderDecoder</span>
+      <span class="tag">Self-Attention</span>
+      <span class="tag">Masking</span>
+      <span class="tag">Positional Encoding</span>
+      <span class="tag">Feed-Forward</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<!-- ================= BIG PICTURE ================= -->
+<section id="big-picture">
+  <div class="eyebrow">01 &middot; The full architecture</div>
+  <h2>One sentence goes in. One translated sentence comes out.</h2>
+  <p class="lede">Click any block in the diagram below to see exactly what goes in, what comes out, and why that step exists. This is the same flow defined by <code class="mono">EncoderDecoder.forward()</code>.</p>
+
+  <div class="flow-wrap">
+    <svg class="flow" viewBox="0 0 980 300" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#5b6d82"/>
+        </marker>
+      </defs>
+
+      <!-- row labels -->
+      <text x="10" y="60" class="flow-caption">SOURCE</text>
+      <text x="10" y="240" class="flow-caption">TARGET</text>
+
+      <!-- src path -->
+      <g class="flow-node" data-node="src">
+        <rect x="10" y="70" width="110" height="46" rx="8"/>
+        <text x="65" y="90" text-anchor="middle" class="label">"I love cats"</text>
+        <text x="65" y="106" text-anchor="middle">token ids</text>
+      </g>
+      <path class="flow-arrow" d="M120,93 L170,93"/>
+
+      <g class="flow-node" data-node="src_embed">
+        <rect x="170" y="70" width="120" height="46" rx="8"/>
+        <text x="230" y="90" text-anchor="middle" class="label">src_embed</text>
+        <text x="230" y="106" text-anchor="middle">+ position</text>
+      </g>
+      <path class="flow-arrow" d="M290,93 L340,93"/>
+
+      <g class="flow-node" data-node="encode" data-active="true">
+        <rect x="340" y="70" width="130" height="46" rx="8"/>
+        <text x="405" y="90" text-anchor="middle" class="label">Encoder</text>
+        <text x="405" y="106" text-anchor="middle">6x layers</text>
+      </g>
+      <path class="flow-arrow" d="M470,93 C 520,93 520,160 570,160"/>
+
+      <g class="flow-node" data-node="memory">
+        <rect x="570" y="137" width="110" height="46" rx="8"/>
+        <text x="625" y="157" text-anchor="middle" class="label">memory</text>
+        <text x="625" y="173" text-anchor="middle">[1,3,512]</text>
+      </g>
+      <path class="flow-arrow" d="M680,160 L730,160"/>
+
+      <!-- tgt path -->
+      <g class="flow-node" data-node="tgt">
+        <rect x="10" y="220" width="110" height="46" rx="8"/>
+        <text x="65" y="240" text-anchor="middle" class="label">"J'aime les"</text>
+        <text x="65" y="256" text-anchor="middle">token ids</text>
+      </g>
+      <path class="flow-arrow" d="M120,243 L170,243"/>
+
+      <g class="flow-node" data-node="tgt_embed">
+        <rect x="170" y="220" width="120" height="46" rx="8"/>
+        <text x="230" y="240" text-anchor="middle" class="label">tgt_embed</text>
+        <text x="230" y="256" text-anchor="middle">+ position</text>
+      </g>
+      <path class="flow-arrow" d="M290,243 C 480,243 480,183 500,183"/>
+
+      <g class="flow-node" data-node="decode">
+        <rect x="500" y="137" width="0" height="0" rx="0" style="display:none"/>
+      </g>
+
+      <path class="flow-arrow" d="M290,243 L730,243"/>
+
+      <g class="flow-node" data-node="decoder">
+        <rect x="730" y="137" width="130" height="130" rx="8"/>
+        <text x="795" y="197" text-anchor="middle" class="label">Decoder</text>
+        <text x="795" y="213" text-anchor="middle">6x layers</text>
+      </g>
+
+      <path class="flow-arrow" d="M860,200 L910,200"/>
+
+      <g class="flow-node" data-node="generator">
+        <rect x="910" y="177" width="65" height="46" rx="8"/>
+        <text x="942" y="197" text-anchor="middle" class="label" font-size="11">Gen.</text>
+        <text x="942" y="213" text-anchor="middle" font-size="9">softmax</text>
+      </g>
+    </svg>
+
+    <div id="flow-detail" class="panel">
+      <div class="dtitle" id="fd-title">Encoder</div>
+      <p class="explain" id="fd-text">Reads the whole source sentence at once and builds a rich numeric understanding of it, called <b>memory</b>. Nothing about the target sentence is involved yet.</p>
+      <div class="io-example" id="fd-io">
+        <div class="row"><span class="k">input</span><span>src_embed(src) &mdash; shape [1, 3, 512]</span></div>
+        <div class="row"><span class="k">output</span><span class="arrow">&rarr;</span><span>memory &mdash; shape [1, 3, 512]</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ================= ENCODER STACK ================= -->
+<section id="encoder">
+  <div class="eyebrow">02 &middot; Reading the input</div>
+  <h2>The Encoder stack</h2>
+  <p class="lede">Six identical layers, each one refining the sentence's meaning a little more &mdash; like passing a draft through six editors in a row.</p>
+
+  <div class="accordion" id="acc-encoder"></div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ================= DECODER STACK ================= -->
+<section id="decoder">
+  <div class="eyebrow">03 &middot; Writing the output</div>
+  <h2>The Decoder stack</h2>
+  <p class="lede">Also six layers &mdash; but each one does <strong style="color:var(--ink)">three</strong> things instead of two: look at its own earlier words, look back at the encoder's memory, then think it over.</p>
+
+  <div class="accordion" id="acc-decoder"></div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ================= MASKING ================= -->
+<section id="masking">
+  <div class="eyebrow">04 &middot; What the model is allowed to see</div>
+  <h2>Two kinds of masking</h2>
+  <p class="lede">Masking is just a rule that says "block attention to this position." There are two independent rules, combined for the decoder.</p>
+
+  <div class="mask-controls">
+    <button class="mbtn active" data-mask="padding">Padding mask</button>
+    <button class="mbtn" data-mask="subsequent">Subsequent (look-ahead) mask</button>
+    <button class="mbtn" data-mask="combined">Combined tgt_mask</button>
+  </div>
+
+  <div class="panel">
+    <div class="mask-grid-wrap">
+      <div>
+        <table class="mgrid" id="mgrid"></table>
+      </div>
+      <div style="flex:1; min-width:220px;">
+        <p class="explain" id="mask-explain" style="margin-top:0;"></p>
+      </div>
+    </div>
+    <div class="mask-legend">
+      <span><span class="swatch" style="background:var(--ok-dim); border:1px solid var(--ok);"></span> allowed to attend</span>
+      <span><span class="swatch" style="background:var(--blocked-dim); border:1px solid var(--blocked);"></span> blocked</span>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ================= ATTENTION ================= -->
+<section id="attention">
+  <div class="eyebrow">05 &middot; The core mechanism</div>
+  <h2>Scaled dot-product attention</h2>
+  <p class="lede">For every word (the <b style="color:var(--ink)">query</b>), attention decides how much to "listen to" every other word (the <b style="color:var(--ink)">key</b>), then blends their content (the <b style="color:var(--ink)">value</b>) accordingly. Click a word to see its attention distribution.</p>
+
+  <div class="panel">
+    <div class="attn-words">
+      <button class="wbtn active" data-word="I">I</button>
+      <button class="wbtn" data-word="love">love</button>
+      <button class="wbtn" data-word="cats">cats</button>
+    </div>
+    <div id="bars"></div>
+    <div class="analogy">
+      <b>Analogy</b>
+      Each word asks a question ("query"), every word offers a label describing what it holds ("key"), and softmax decides how much to listen to each one before blending their actual content ("value").
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:20px;">
+    <div class="accordion-title" style="margin-bottom:8px;">
+      <span class="accordion-name">Multi-Headed Attention</span>
+      <span class="accordion-sub mono">h = 8 heads</span>
+    </div>
+    <p class="explain">Instead of running attention once with the full 512-number vector, the model splits each word into 8 smaller "heads" of 64 numbers each, runs attention separately on every head, then stitches the results back together. Each head can specialize &mdash; one might track grammar, another might track topic.</p>
+    <div class="io-example">
+      <div class="row"><span class="k">input</span><span>query/key/value &mdash; shape [1, 3, 512]</span></div>
+      <div class="row"><span class="k">split</span><span class="arrow">&rarr;</span><span>[1, 8, 3, 64] &mdash; 8 independent heads</span></div>
+      <div class="row"><span class="k">attend</span><span class="arrow">&rarr;</span><span>each head runs attention independently</span></div>
+      <div class="row"><span class="k">combine</span><span class="arrow">&rarr;</span><span>[1, 3, 512] &mdash; heads concatenated + final linear layer</span></div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ================= FEED FORWARD ================= -->
+<section id="feedforward">
+  <div class="eyebrow">06 &middot; Private thinking time</div>
+  <h2>The position-wise feed-forward network</h2>
+  <p class="lede">After words finish talking to each other via attention, each word goes alone into a "private room" and is processed by the exact same small neural net &mdash; independently, with no cross-talk.</p>
+
+  <div class="panel">
+    <pre class="code"><span class="kw">class</span> <span class="fn">PositionwiseFeedForward</span>(nn.Module):
+    <span class="kw">def</span> forward(self, x):
+        <span class="kw">return</span> self.w_2(self.dropout(self.w_1(x).relu()))</pre>
+    <div class="io-example">
+      <div class="row"><span class="k">input</span><span>x &mdash; shape [1, 3, 512]</span></div>
+      <div class="row"><span class="k">w_1</span><span class="arrow">&rarr;</span><span>expand to [1, 3, 2048], then ReLU</span></div>
+      <div class="row"><span class="k">w_2</span><span class="arrow">&rarr;</span><span>compress back to [1, 3, 512]</span></div>
+    </div>
+    <div class="analogy">
+      <b>Analogy</b>
+      Attention is a group discussion where words share information. The feed-forward step is each word then going off alone to privately think over what it just heard &mdash; using the same fixed thinking process every word uses.
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:14px;">
+    <div class="accordion-title" style="margin-bottom:10px;">
+      <span class="accordion-name">Does it have backpropagation?</span>
+    </div>
+    <p class="explain">Yes &mdash; but not on its own. Backprop is one single process that runs through the <strong>entire</strong> model at once. Toggle the direction below to see the same steps run in reverse.</p>
+    <div class="fb-toggle">
+      <button class="mbtn active" data-fb="forward">Forward pass</button>
+      <button class="mbtn" data-fb="backward">Backward pass</button>
+    </div>
+    <div class="ff-diagram forward" id="ffdiagram">
+      <span class="ff-step">x</span><span class="ff-arrow">&rarr;</span>
+      <span class="ff-step">w_1</span><span class="ff-arrow">&rarr;</span>
+      <span class="ff-step">relu</span><span class="ff-arrow">&rarr;</span>
+      <span class="ff-step">dropout</span><span class="ff-arrow">&rarr;</span>
+      <span class="ff-step">w_2</span><span class="ff-arrow">&rarr;</span>
+      <span class="ff-step">output</span>
+    </div>
+    <p class="explain" id="fb-caption" style="margin-top:12px;">Numbers flow left to right: input &rarr; expand &rarr; non-linearity &rarr; compress &rarr; output.</p>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ================= EMBEDDINGS ================= -->
+<section id="embeddings">
+  <div class="eyebrow">07 &middot; Turning words into numbers</div>
+  <h2>Embeddings &amp; positional encoding</h2>
+  <p class="lede">Before any of the above can happen, raw words need to become numbers &mdash; and the model needs a way to know word order, since attention alone has no sense of position.</p>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="accordion-name" style="margin-bottom:8px;">Embeddings</div>
+      <p class="explain">A lookup table: each word ID maps to a learned vector. Simple as a dictionary lookup.</p>
+      <div class="io-example">
+        <div class="row"><span class="k">input</span><span>"cats" &rarr; id 17</span></div>
+        <div class="row"><span class="k">lookup</span><span class="arrow">&rarr;</span><span>[0.02, -0.5, ...] (512 numbers)</span></div>
+        <div class="row"><span class="k">scale</span><span class="arrow">&rarr;</span><span>&times; sqrt(512)</span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="accordion-name" style="margin-bottom:8px;">Positional Encoding</div>
+      <p class="explain">A fixed wave pattern (sine/cosine) is added on top, so the same word looks different depending on where it sits in the sentence.</p>
+      <div class="io-example">
+        <div class="row"><span class="k">"I"</span><span>+ pattern for position 0</span></div>
+        <div class="row"><span class="k">"love"</span><span>+ pattern for position 1</span></div>
+        <div class="row"><span class="k">"cats"</span><span>+ pattern for position 2</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="analogy" style="margin-top:14px;">
+    <b>Analogy</b>
+    Embeddings translate a word into "math language." Positional encoding stamps a timestamp on it, so the model knows "this word came first, this one second" &mdash; something attention itself doesn't track on its own.
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ================= ASSEMBLY ================= -->
+<section id="assembly">
+  <div class="eyebrow">08 &middot; Putting it all together</div>
+  <h2><code class="mono" style="font-size:0.85em;">make_model()</code> &mdash; the recipe</h2>
+  <p class="lede">One function builds every piece discussed above and wires them into a single <code class="mono">EncoderDecoder</code>, using default sizes from the original paper.</p>
+
+  <div class="panel">
+    <div class="io-example" style="font-size:13px;">
+      <div class="row"><span class="k">N = 6</span><span>encoder layers, and 6 decoder layers</span></div>
+      <div class="row"><span class="k">d_model</span><span>512 &mdash; size of each word's vector</span></div>
+      <div class="row"><span class="k">d_ff</span><span>2048 &mdash; expanded size inside feed-forward</span></div>
+      <div class="row"><span class="k">h = 8</span><span>attention heads per layer</span></div>
+    </div>
+    <p class="explain" style="margin-top:14px;">Every reused module (attention, feed-forward) is <b style="color:var(--ink)">deep-copied</b> before being handed to a new layer &mdash; otherwise multiple layers would accidentally share the exact same weights and update together, defeating the point of having separate layers. Finally, all weight matrices get Xavier-uniform initialization so training starts from a well-balanced set of random numbers.</p>
+    <div class="analogy">
+      <b>Analogy</b>
+      Think of <code class="mono">make_model()</code> as a recipe card: it doesn't invent new ingredients, it just measures out 6 copies of each layer, assembles them in order, and hands you the finished, ready-to-train model.
+    </div>
+  </div>
+</section>
+
+<div class="next-up">
+  <p>NEXT UP &mdash; TRAINING LOOP, LOSS FUNCTION &amp; LABEL SMOOTHING</p>
+</div>
+
+</div><!-- /wrap -->
+
+<script>
+// ---------------- Nav active state ----------------
+const sections = document.querySelectorAll('section[id]');
+const navLinks = document.querySelectorAll('.nav-links a');
+const io = new IntersectionObserver((entries)=>{
+  entries.forEach(entry=>{
+    if(entry.isIntersecting){
+      navLinks.forEach(l=>l.classList.remove('active'));
+      const link = document.querySelector('.nav-links a[href="#'+entry.target.id+'"]');
+      if(link) link.classList.add('active');
+    }
+  });
+}, {rootMargin:'-40% 0px -50% 0px'});
+sections.forEach(s=>io.observe(s));
+
+// ---------------- Accordion builder ----------------
+function buildAccordion(containerId, items){
+  const container = document.getElementById(containerId);
+  items.forEach((item, i)=>{
+    const el = document.createElement('div');
+    el.className = 'accordion-item' + (i===0 ? ' open' : '');
+    el.innerHTML = `
+      <div class="accordion-head">
+        <div class="accordion-title">
+          <span class="accordion-num">${String(i+1).padStart(2,'0')}</span>
+          <span class="accordion-name">${item.name}</span>
+          <span class="accordion-sub">${item.sub || ''}</span>
+        </div>
+        <svg class="chevron" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="accordion-body">
+        <div class="accordion-body-inner">
+          ${item.code ? `<pre class="code">${item.code}</pre>` : ''}
+          <p class="explain">${item.explain}</p>
+          ${item.io ? `<div class="io-example">${item.io}</div>` : ''}
+          ${item.analogy ? `<div class="analogy"><b>Analogy</b>${item.analogy}</div>` : ''}
+        </div>
+      </div>`;
+    const head = el.querySelector('.accordion-head');
+    head.addEventListener('click', ()=>{
+      el.classList.toggle('open');
+    });
+    container.appendChild(el);
+  });
+}
+
+const encoderItems = [
+  {
+    name:'Generator',
+    sub:'linear + log_softmax',
+    code:`<span class="kw">def</span> forward(self, x):
+    <span class="kw">return</span> log_softmax(self.proj(x), dim=-1)`,
+    explain:'The very last step of the whole model. Converts a 512-number "meaning" vector into a probability score for every word in the vocabulary.',
+    io:`<div class="row"><span class="k">input</span><span>decoder output &mdash; [1, 512]</span></div>
+        <div class="row"><span class="k">output</span><span class="arrow">&rarr;</span><span>[1, 10000] probabilities, e.g. "chats" = 92%</span></div>`,
+    analogy:'Turning the model\'s internal "math language" back into an actual word, with a confidence score attached.'
+  },
+  {
+    name:'clones()',
+    sub:'helper function',
+    code:`<span class="kw">def</span> <span class="fn">clones</span>(module, N):
+    <span class="kw">return</span> nn.ModuleList([copy.deepcopy(module) <span class="kw">for</span> _ <span class="kw">in</span> range(N)])`,
+    explain:'Not a model layer &mdash; just a utility that makes N independent copies of a layer, each with its own separate weights.',
+    io:`<div class="row"><span class="k">input</span><span>one EncoderLayer, N = 6</span></div>
+        <div class="row"><span class="k">output</span><span class="arrow">&rarr;</span><span>6 independent EncoderLayers</span></div>`,
+    analogy:'Like photocopying a blank form 6 times &mdash; same template, but each copy gets filled in independently during training.'
+  },
+  {
+    name:'Encoder',
+    sub:'stack of N layers',
+    code:`<span class="kw">def</span> forward(self, x, mask):
+    <span class="kw">for</span> layer <span class="kw">in</span> self.layers:
+        x = layer(x, mask)
+    <span class="kw">return</span> self.norm(x)`,
+    explain:'Runs the input through 6 identical layers, one after another, then normalizes the result. Each layer refines the sentence\'s understanding a bit more.',
+    io:`<div class="row"><span class="k">input</span><span>"I love cats" embeddings &mdash; [1, 3, 512]</span></div>
+        <div class="row"><span class="k">output</span><span class="arrow">&rarr;</span><span>memory &mdash; [1, 3, 512]</span></div>`,
+    analogy:'Passing a draft through 6 editors in a row, each one improving it slightly before handing it to the next.'
+  },
+  {
+    name:'LayerNorm',
+    sub:'stabilizes scale',
+    code:`<span class="kw">def</span> forward(self, x):
+    mean = x.mean(-1, keepdim=<span class="kw">True</span>)
+    std = x.std(-1, keepdim=<span class="kw">True</span>)
+    <span class="kw">return</span> self.a_2 * (x - mean) / (std + self.eps) + self.b_2`,
+    explain:'Rescales each word\'s vector so its numbers have a consistent, stable range &mdash; preventing values from growing too large or too small as they pass through many layers.',
+    io:`<div class="row"><span class="k">input</span><span>[10, 50, -30, 8, ...] (inconsistent scale)</span></div>
+        <div class="row"><span class="k">output</span><span class="arrow">&rarr;</span><span>[0.24, 1.6, -1.1, 0.05, ...] (stable scale)</span></div>`,
+    analogy:'Turning a volume knob so no word\'s vector is "too loud" or "too quiet" compared to the others.'
+  },
+  {
+    name:'SublayerConnection',
+    sub:'residual + norm wrapper',
+    code:`<span class="kw">def</span> forward(self, x, sublayer):
+    <span class="kw">return</span> x + self.dropout(sublayer(self.norm(x)))`,
+    explain:'Wraps any sub-step (like attention). Normalizes the input, runs the sub-step, then adds the original input back on &mdash; a "residual connection" that helps training and preserves earlier information.',
+    io:`<div class="row"><span class="k">input</span><span>x, and a sublayer function</span></div>
+        <div class="row"><span class="k">output</span><span class="arrow">&rarr;</span><span>x + dropout(sublayer(norm(x)))</span></div>`,
+    analogy:'Like scribbling notes in a book\'s margin (the sublayer\'s output) while keeping the original text (x) still there &mdash; you get both.'
+  },
+  {
+    name:'EncoderLayer',
+    sub:'self-attn + feed-forward',
+    code:`<span class="kw">def</span> forward(self, x, mask):
+    x = self.sublayer[0](x, <span class="kw">lambda</span> x: self.self_attn(x, x, x, mask))
+    <span class="kw">return</span> self.sublayer[1](x, self.feed_forward)`,
+    explain:'One full layer of the encoder: first, words look at each other (self-attention); then each word is privately processed (feed-forward). Both steps are wrapped in a SublayerConnection.',
+    io:`<div class="row"><span class="k">input</span><span>"I love cats" &mdash; [1, 3, 512]</span></div>
+        <div class="row"><span class="k">step 1</span><span class="arrow">&rarr;</span><span>self-attention &mdash; words build context</span></div>
+        <div class="row"><span class="k">step 2</span><span class="arrow">&rarr;</span><span>feed-forward &mdash; per-word processing</span></div>`,
+    analogy:'"Cats" learns that "love" is the verb acting on it by looking around the sentence, then quietly thinks that insight over on its own.'
+  }
+];
+
+const decoderItems = [
+  {
+    name:'Decoder',
+    sub:'stack of N layers',
+    code:`<span class="kw">def</span> forward(self, x, memory, src_mask, tgt_mask):
+    <span class="kw">for</span> layer <span class="kw">in</span> self.layers:
+        x = layer(x, memory, src_mask, tgt_mask)
+    <span class="kw">return</span> self.norm(x)`,
+    explain:'Same idea as the Encoder stack, but every layer also receives the encoder\'s memory plus both masks, since the decoder must consult the source sentence while writing.',
+    io:`<div class="row"><span class="k">input</span><span>"J'aime les chats" &mdash; [1, 4, 512], memory &mdash; [1, 3, 512]</span></div>
+        <div class="row"><span class="k">output</span><span class="arrow">&rarr;</span><span>[1, 4, 512], ready for the Generator</span></div>`
+  },
+  {
+    name:'DecoderLayer',
+    sub:'self-attn + cross-attn + feed-forward',
+    code:`<span class="kw">def</span> forward(self, x, memory, src_mask, tgt_mask):
+    m = memory
+    x = self.sublayer[0](x, <span class="kw">lambda</span> x: self.self_attn(x, x, x, tgt_mask))
+    x = self.sublayer[1](x, <span class="kw">lambda</span> x: self.src_attn(x, m, m, src_mask))
+    <span class="kw">return</span> self.sublayer[2](x, self.feed_forward)</span>`,
+    explain:'Three steps instead of two. (1) Self-attention: target words look only at earlier target words. (2) Cross-attention: target words look at the encoder\'s memory. (3) Feed-forward: private per-word processing.',
+    io:`<div class="row"><span class="k">step 1</span><span>self_attn(x,x,x, tgt_mask) &mdash; look at own earlier words</span></div>
+        <div class="row"><span class="k">step 2</span><span>src_attn(x, memory, memory, src_mask) &mdash; look at source</span></div>
+        <div class="row"><span class="k">step 3</span><span>feed_forward(x) &mdash; think it over</span></div>`,
+    analogy:'Step 2 is the decoder literally asking: "given what I\'ve written so far, which part of the input sentence is relevant right now?"'
+  }
+];
+
+buildAccordion('acc-encoder', encoderItems);
+buildAccordion('acc-decoder', decoderItems);
+
+// ---------------- Flow diagram detail panel ----------------
+const flowData = {
+  src:{title:'Source sentence', text:'The raw input sentence, represented as a sequence of token IDs (numbers standing in for words).', io:`<div class="row"><span class="k">example</span><span>"I love cats" &rarr; [5, 42, 17]</span></div>`},
+  src_embed:{title:'src_embed', text:'Converts token IDs into 512-number vectors, then adds positional information so the model knows word order.', io:`<div class="row"><span class="k">input</span><span>[5, 42, 17]</span></div><div class="row"><span class="k">output</span><span class="arrow">&rarr;</span><span>[1, 3, 512]</span></div>`},
+  encode:{title:'Encoder', text:'Reads the whole source sentence at once and builds a rich numeric understanding of it, called memory. Nothing about the target sentence is involved yet.', io:`<div class="row"><span class="k">input</span><span>src_embed(src) &mdash; [1, 3, 512]</span></div><div class="row"><span class="k">output</span><span class="arrow">&rarr;</span><span>memory &mdash; [1, 3, 512]</span></div>`},
+  memory:{title:'memory', text:'The encoder\'s finished understanding of the source sentence. The decoder will consult this at every layer via cross-attention.', io:`<div class="row"><span class="k">shape</span><span>[1, 3, 512] &mdash; one vector per source word</span></div>`},
+  tgt:{title:'Target sentence (so far)', text:'During training, the whole correct target sentence is fed in at once (with masking to prevent cheating). At inference, this is only the words generated so far.', io:`<div class="row"><span class="k">example</span><span>"J'aime les" &rarr; token ids</span></div>`},
+  tgt_embed:{title:'tgt_embed', text:'Same idea as src_embed, but for the target vocabulary &mdash; converts target token IDs into vectors and adds positional info.', io:`<div class="row"><span class="k">output</span><span class="arrow">&rarr;</span><span>[1, 4, 512]</span></div>`},
+  decoder:{title:'Decoder', text:'Generates the output, one position at a time. Each layer: looks at earlier target words (self-attention, masked), looks at the encoder\'s memory (cross-attention), then thinks it over (feed-forward).', io:`<div class="row"><span class="k">input</span><span>tgt_embed(tgt), memory, src_mask, tgt_mask</span></div><div class="row"><span class="k">output</span><span class="arrow">&rarr;</span><span>[1, 4, 512]</span></div>`},
+  generator:{title:'Generator', text:'The final step: a linear layer plus log-softmax converts the decoder\'s numeric output into actual word probabilities.', io:`<div class="row"><span class="k">input</span><span>[1, 512] (one position)</span></div><div class="row"><span class="k">output</span><span class="arrow">&rarr;</span><span>[1, 10000] &mdash; e.g. "chats" = 92%</span></div>`}
+};
+
+const flowNodes = document.querySelectorAll('.flow-node[data-node]');
+const fdTitle = document.getElementById('fd-title');
+const fdText = document.getElementById('fd-text');
+const fdIo = document.getElementById('fd-io');
+
+flowNodes.forEach(node=>{
+  const key = node.getAttribute('data-node');
+  if(!flowData[key]) return;
+  if(node.getAttribute('data-active') === 'true'){
+    node.classList.add('active');
+  }
+  node.addEventListener('click', ()=>{
+    flowNodes.forEach(n=>n.classList.remove('active'));
+    node.classList.add('active');
+    const d = flowData[key];
+    fdTitle.textContent = d.title;
+    fdText.innerHTML = d.text;
+    fdIo.innerHTML = d.io;
+  });
+});
+
+// ---------------- Masking demo ----------------
+const targetWords = ['J\'aime','les','chats','<PAD>'];
+const maskDefs = {
+  padding: (i,j)=> j < 3,           // only PAD column blocked, all rows same
+  subsequent: (i,j)=> j <= i,        // triangular
+  combined: (i,j)=> (j <= i) && (j < 3)
+};
+const maskExplain = {
+  padding: 'Every real word may attend to every other real word &mdash; but nothing may attend to the fake &lt;PAD&gt; token, since it carries no meaning.',
+  subsequent: 'Each word may only attend to itself and earlier words &mdash; never to words that come later. This stops the decoder from "seeing the future" during training.',
+  combined: 'The real tgt_mask used by the decoder: both rules apply at once. A word must be earlier-or-equal in position, AND not be the padding token.'
+};
+
+function renderMaskGrid(mode){
+  const table = document.getElementById('mgrid');
+  let html = '<tr><th></th>';
+  targetWords.forEach(w=> html += `<th>${w}</th>`);
+  html += '</tr>';
+  targetWords.forEach((rowWord, i)=>{
+    html += `<tr><th>${rowWord}</th>`;
+    targetWords.forEach((colWord, j)=>{
+      const allowed = maskDefs[mode](i,j);
+      html += `<td class="cell ${allowed ? 'allowed':'blocked'}">${allowed ? '1':'0'}</td>`;
+    });
+    html += '</tr>';
+  });
+  table.innerHTML = html;
+  document.getElementById('mask-explain').textContent = maskExplain[mode];
+}
+renderMaskGrid('padding');
+
+document.querySelectorAll('.mbtn[data-mask]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.mbtn[data-mask]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    renderMaskGrid(btn.getAttribute('data-mask'));
+  });
+});
+
+// ---------------- Attention bars demo ----------------
+const attnWeights = {
+  I:     {I:0.55, love:0.30, cats:0.15},
+  love:  {I:0.25, love:0.35, cats:0.40},
+  cats:  {I:0.10, love:0.35, cats:0.55}
+};
+function renderBars(word){
+  const data = attnWeights[word];
+  const bars = document.getElementById('bars');
+  bars.innerHTML = '';
+  Object.entries(data).forEach(([w, val])=>{
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    row.innerHTML = `<span class="bar-label">${w}</span><div class="bar-track"><div class="bar-fill" style="width:0%"></div></div><span class="bar-pct">${Math.round(val*100)}%</span>`;
+    bars.appendChild(row);
+    requestAnimationFrame(()=>{ row.querySelector('.bar-fill').style.width = (val*100)+'%'; });
+  });
+}
+renderBars('I');
+document.querySelectorAll('.wbtn[data-word]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.wbtn[data-word]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    renderBars(btn.getAttribute('data-word'));
+  });
+});
+
+// ---------------- Forward/backward toggle ----------------
+const ffCaptions = {
+  forward: 'Numbers flow left to right: input &rarr; expand &rarr; non-linearity &rarr; compress &rarr; output.',
+  backward: 'Gradients flow right to left: PyTorch\'s autograd walks the same steps in reverse, computing how much each weight in w_1 and w_2 contributed to the error.'
+};
+document.querySelectorAll('.mbtn[data-fb]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.mbtn[data-fb]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const mode = btn.getAttribute('data-fb');
+    const diagram = document.getElementById('ffdiagram');
+    diagram.classList.remove('forward','backward');
+    diagram.classList.add(mode);
+    document.getElementById('fb-caption').innerHTML = ffCaptions[mode];
+  });
+});
+</script>
+
+</body>
+</html>
