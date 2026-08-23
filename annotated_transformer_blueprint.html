@@ -1,0 +1,1288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Annotated Transformer, Explained</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#f6f2ea; --paper2:#fffdf8; --paper3:#efe9dc;
+  --rule:rgba(33,28,20,0.14); --rule-strong:rgba(33,28,20,0.28);
+  --ink:#221d15; --ink-muted:#5f5748; --ink-faint:#948b78;
+  --indigo:#2a3d8f; --indigo-dim:rgba(42,61,143,0.08); --indigo-brd:rgba(42,61,143,0.35);
+  --red:#a63a3a; --red-dim:rgba(166,58,58,0.08); --red-brd:rgba(166,58,58,0.35);
+  --mustard:#8f6a17; --mustard-dim:rgba(143,106,23,0.09); --mustard-brd:rgba(143,106,23,0.35);
+  --teal:#2f6b53; --teal-dim:rgba(47,107,83,0.1); --teal-brd:rgba(47,107,83,0.4);
+  --code-bg:#221d15; --code-text:#f1ead9; --code-kw:#e3ae4c; --code-fn:#7fc4e0; --code-cm:#93876e; --code-str:#a8c98a;
+  --serif:'Fraunces',serif; --sans:'Inter',sans-serif; --mono:'IBM Plex Mono',monospace;
+  --sidebar-w:280px; --margin-w:250px;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+html{scroll-behavior:smooth; font-size:17px;}
+body{background:var(--paper); color:var(--ink); font-family:var(--sans); line-height:1.7;}
+::selection{background:rgba(42,61,143,0.18);}
+code,.mono{font-family:var(--mono);}
+a{color:var(--indigo);}
+
+/* subtle paper texture via faint ruled lines */
+body::before{
+  content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background-image:repeating-linear-gradient(180deg, transparent 0 43px, rgba(33,28,20,0.025) 43px 44px);
+}
+
+/* ===== progress bar ===== */
+.scrollbar{position:fixed; top:0; left:0; height:3px; background:var(--indigo); z-index:80; width:0%; transition:width .1s linear;}
+
+/* ===== topbar ===== */
+.topbar{
+  position:fixed; top:0; left:0; right:0; height:68px; z-index:70;
+  background:rgba(246,242,234,0.94); backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--rule);
+  display:flex; align-items:center; justify-content:space-between; padding:0 26px;
+}
+.brand{font-family:var(--serif); font-weight:600; font-size:19px; display:flex; align-items:baseline; gap:3px; letter-spacing:-0.01em;}
+.brand .accent{color:var(--red);}
+.chapter-tabs{display:flex; gap:6px; background:var(--paper3); padding:4px; border-radius:11px; border:1px solid var(--rule);}
+.chapter-tab{
+  font-family:var(--mono); font-size:12.5px; font-weight:500; color:var(--ink-muted);
+  padding:8px 14px; border-radius:8px; cursor:pointer; border:none; background:none; white-space:nowrap;
+}
+.chapter-tab.active{background:var(--paper2); color:var(--ink); box-shadow:0 1px 3px rgba(33,28,20,0.12);}
+.chapter-tab .num{color:var(--red); margin-right:5px;}
+.menu-btn{display:none; font-family:var(--mono); font-size:13px; background:var(--paper3); border:1px solid var(--rule); padding:9px 13px; border-radius:9px; cursor:pointer; color:var(--ink);}
+@media(max-width:1000px){ .menu-btn{display:block;} .chapter-tabs .tab-label{display:none;} }
+@media(max-width:640px){ .chapter-tabs{display:none;} .brand{font-size:16px;} }
+
+/* ===== layout ===== */
+.shell{display:flex; padding-top:68px; max-width:1300px; margin:0 auto; position:relative;}
+.sidebar{
+  width:var(--sidebar-w); flex-shrink:0; position:sticky; top:68px; align-self:flex-start;
+  height:calc(100vh - 68px); overflow-y:auto; padding:34px 18px 60px 26px;
+}
+@media(max-width:1000px){
+  .sidebar{
+    position:fixed; left:0; top:68px; bottom:0; background:var(--paper2); z-index:65; width:280px;
+    border-right:1px solid var(--rule); transform:translateX(-100%); transition:transform .25s ease; padding:24px 20px;
+  }
+  .sidebar.open{transform:translateX(0); box-shadow:8px 0 24px rgba(0,0,0,0.15);}
+}
+.sidebar-title{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:14px; font-weight:600;}
+.toc-link{
+  display:block; font-size:14px; color:var(--ink-muted); text-decoration:none; padding:8px 12px; border-radius:8px;
+  border-left:2px solid transparent; margin-bottom:2px; line-height:1.4;
+}
+.toc-link .tnum{font-family:var(--mono); font-size:12px; color:var(--ink-faint); margin-right:8px;}
+.toc-link:hover{background:var(--paper3); color:var(--ink);}
+.toc-link.active{color:var(--red); border-left-color:var(--red); background:var(--red-dim); font-weight:600;}
+.toc-link.active .tnum{color:var(--red);}
+
+.overlay{position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:64; display:none;}
+.overlay.show{display:block;}
+@media(min-width:1001px){.overlay{display:none !important;}}
+
+.main{flex:1; min-width:0; padding:0 8px;}
+.chapter{display:none;}
+.chapter.active{display:block;}
+
+.chapter-hero{padding:44px 30px 30px; max-width:760px;}
+.chapter-eyebrow{font-family:var(--mono); font-size:12.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--red); font-weight:600; margin-bottom:10px;}
+.chapter-hero h1{font-family:var(--serif); font-size:clamp(32px,4.6vw,46px); font-weight:600; letter-spacing:-0.01em; line-height:1.1; margin-bottom:14px;}
+.chapter-hero p{font-size:18px; color:var(--ink-muted); max-width:600px; line-height:1.65;}
+
+.entry{padding:8px 30px 56px; max-width:760px; border-top:1px solid var(--rule); margin-top:8px;}
+.entry:first-of-type{border-top:none;}
+.entry-eyebrow{font-family:var(--mono); font-size:12px; color:var(--ink-faint); margin:34px 0 8px; letter-spacing:.03em;}
+.entry h2{font-family:var(--serif); font-size:clamp(24px,3.2vw,30px); font-weight:600; letter-spacing:-0.01em; margin-bottom:14px; line-height:1.2;}
+.entry .dek{font-size:16.5px; color:var(--ink-muted); margin-bottom:24px; line-height:1.7;}
+
+p.body-text{font-size:16.5px; color:var(--ink); margin:14px 0; line-height:1.75;}
+p.body-text b, p.body-text strong{font-weight:600;}
+p.body-text code{background:var(--paper3); padding:1px 6px; border-radius:4px; font-size:14.5px; color:var(--ink);}
+ul.plist{margin:12px 0 12px 22px; font-size:16.5px; line-height:1.7; color:var(--ink);}
+ul.plist li{margin-bottom:9px;}
+ul.plist code{background:var(--paper3); padding:1px 6px; border-radius:4px; font-size:14.5px;}
+
+/* code panel: dark inset on light page */
+.codepanel{
+  background:var(--code-bg); border-radius:12px; padding:20px 22px; margin:18px 0;
+  overflow-x:auto; box-shadow:0 6px 18px rgba(33,28,20,0.14);
+}
+.codepanel .fname{font-family:var(--mono); font-size:11px; color:var(--code-cm); margin-bottom:10px; letter-spacing:.04em;}
+pre.code{font-family:var(--mono); font-size:14px; color:var(--code-text); line-height:1.75; white-space:pre;}
+.code .kw{color:var(--code-kw);} .code .fn{color:var(--code-fn);} .code .cm{color:var(--code-cm); font-style:italic;} .code .str{color:var(--code-str);}
+
+/* io example: a "receipt" style ledger */
+.ledger{background:var(--paper2); border:1px solid var(--rule); border-radius:12px; padding:18px 20px; margin:18px 0;}
+.ledger-title{font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:10px; font-weight:600;}
+.ledger-row{display:flex; gap:14px; padding:7px 0; border-bottom:1px dashed var(--rule); font-family:var(--mono); font-size:13.5px; flex-wrap:wrap;}
+.ledger-row:last-child{border-bottom:none;}
+.ledger-row .lk{color:var(--indigo); min-width:100px; font-weight:600; flex-shrink:0;}
+.ledger-row .lv{color:var(--ink-muted);}
+.ledger-row .note{color:var(--ink-faint); font-style:italic; font-size:12px;}
+
+/* callouts: full width, colored left rule */
+.callout{border-left:3px solid; padding:16px 20px; border-radius:0 10px 10px 0; margin:20px 0; font-size:15.5px; line-height:1.7;}
+.callout .ctag{font-family:var(--mono); font-size:11.5px; letter-spacing:.08em; text-transform:uppercase; font-weight:700; display:block; margin-bottom:8px;}
+.callout.why{border-color:var(--mustard); background:var(--mustard-dim);}
+.callout.why .ctag{color:var(--mustard);}
+.callout.walk{border-color:var(--teal); background:var(--teal-dim);}
+.callout.walk .ctag{color:var(--teal);}
+.callout.walk ol{margin:8px 0 2px 20px;}
+.callout.walk ol li{margin-bottom:9px;}
+.callout.walk .wn{font-family:var(--mono); font-weight:700; color:var(--teal);}
+
+/* margin notes (analogies) - grid pairing */
+.annotated{display:grid; grid-template-columns:1fr; gap:12px; margin:18px 0; align-items:start;}
+@media(min-width:1180px){
+  .shell{max-width:1560px;}
+  .annotated{grid-template-columns: 1fr var(--margin-w); column-gap:32px;}
+}
+.margin-note{
+  background:var(--red-dim); border:1px solid var(--red-brd); border-radius:10px; padding:14px 16px;
+  font-size:13.5px; color:var(--ink); line-height:1.6;
+}
+.margin-note .mtag{font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--red); font-weight:700; display:block; margin-bottom:6px;}
+.margin-note::before{content:'✎'; margin-right:5px;}
+
+.two-col{display:grid; grid-template-columns:1fr; gap:18px; margin:18px 0;}
+@media(min-width:680px){.two-col{grid-template-columns:1fr 1fr;}}
+.subcard{background:var(--paper2); border:1px solid var(--rule); border-radius:12px; padding:20px 22px;}
+.subcard h4{font-family:var(--serif); font-size:17px; font-weight:600; margin-bottom:8px;}
+
+/* mini accordion */
+.mini-acc-item{border:1px solid var(--rule); border-radius:12px; margin-bottom:12px; overflow:hidden; background:var(--paper2);}
+.mini-acc-head{display:flex; align-items:center; justify-content:space-between; padding:16px 20px; cursor:pointer;}
+.mini-acc-head:hover{background:var(--paper3);}
+.mini-acc-name{font-family:var(--serif); font-weight:600; font-size:17px;}
+.mini-acc-sub{font-family:var(--mono); font-size:12px; color:var(--ink-faint); margin-left:10px;}
+.mini-chevron{width:18px; height:18px; color:var(--ink-faint); transition:transform .25s ease; flex-shrink:0;}
+.mini-acc-item.open .mini-chevron{transform:rotate(180deg); color:var(--red);}
+.mini-acc-body{max-height:0; overflow:hidden; transition:max-height .35s ease;}
+.mini-acc-item.open .mini-acc-body{max-height:2200px;}
+.mini-acc-body-inner{padding:0 20px 22px;}
+
+/* worked-number table */
+table.numtable{border-collapse:collapse; width:100%; margin:16px 0; font-family:var(--mono); font-size:13.5px;}
+table.numtable th, table.numtable td{border:1px solid var(--rule); padding:9px 12px; text-align:center;}
+table.numtable th{background:var(--paper3); color:var(--ink-muted); font-weight:600; font-size:12px;}
+table.numtable td.hl{background:var(--indigo-dim); color:var(--indigo); font-weight:600;}
+
+/* flow diagram */
+svg.flow{width:100%; height:auto; display:block;}
+.flow-node rect{fill:var(--paper2); stroke:var(--rule-strong); stroke-width:1.4; transition:all .2s ease;}
+.flow-node text{font-family:var(--mono); fill:var(--ink-muted); font-size:12px;}
+.flow-node .label{fill:var(--ink); font-family:var(--sans); font-size:13px; font-weight:600;}
+.flow-node{cursor:pointer;}
+.flow-node:hover rect{stroke:var(--indigo);}
+.flow-node.active rect{stroke:var(--red); fill:var(--red-dim);}
+.flow-node.active .label{fill:var(--red);}
+.flow-arrow{stroke:var(--ink-faint); stroke-width:1.5; fill:none; marker-end:url(#arrowhead);}
+.flow-caption{fill:var(--ink-faint); font-family:var(--mono); font-size:10.5px;}
+
+/* buttons */
+.btn-row{display:flex; gap:9px; flex-wrap:wrap; margin-bottom:16px;}
+.mbtn{font-family:var(--mono); font-size:12.5px; color:var(--ink-muted); background:var(--paper2); border:1px solid var(--rule-strong); padding:8px 15px; border-radius:20px; cursor:pointer; font-weight:500;}
+.mbtn:hover{border-color:var(--indigo); color:var(--ink);}
+.mbtn.active{color:var(--red); border-color:var(--red); background:var(--red-dim);}
+
+/* masking grid */
+.mask-wrap{display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start;}
+table.mgrid{border-collapse:collapse; font-family:var(--mono); font-size:12px;}
+table.mgrid th, table.mgrid td{width:44px; height:36px; text-align:center; border:1px solid var(--rule);}
+table.mgrid th{color:var(--ink-faint); font-weight:500; font-size:10.5px;}
+table.mgrid td.cell{background:var(--paper3); color:var(--ink-faint); font-weight:600;}
+table.mgrid td.cell.allowed{background:var(--teal-dim); color:var(--teal);}
+table.mgrid td.cell.blocked{background:var(--red-dim); color:var(--red);}
+.legend{display:flex; gap:18px; margin-top:14px; font-size:13px; color:var(--ink-muted); flex-wrap:wrap;}
+.legend span{display:inline-flex; align-items:center; gap:7px;}
+.swatch{width:12px; height:12px; border-radius:3px; display:inline-block;}
+
+/* attention bars */
+.attn-words{display:flex; gap:9px; margin-bottom:16px; flex-wrap:wrap;}
+.wbtn{font-family:var(--mono); font-size:13.5px; padding:9px 16px; border-radius:9px; background:var(--paper2); border:1px solid var(--rule-strong); color:var(--ink-muted); cursor:pointer;}
+.wbtn.active{border-color:var(--red); color:var(--red); background:var(--red-dim);}
+.bar-row{display:flex; align-items:center; gap:12px; margin-bottom:10px;}
+.bar-label{font-family:var(--mono); font-size:13px; width:60px; color:var(--ink-muted); flex-shrink:0;}
+.bar-track{flex:1; height:20px; background:var(--paper3); border-radius:6px; overflow:hidden; border:1px solid var(--rule);}
+.bar-fill{height:100%; background:linear-gradient(90deg,var(--indigo),var(--red)); width:0%; transition:width .5s ease;}
+.bar-pct{font-family:var(--mono); font-size:12.5px; width:44px; text-align:right; color:var(--ink-faint);}
+
+.ff-diagram{display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-family:var(--mono); font-size:13px; padding:18px; background:var(--paper3); border:1px solid var(--rule); border-radius:10px;}
+.ff-step{padding:8px 13px; border-radius:7px; border:1px solid var(--rule-strong); color:var(--ink-muted); background:var(--paper2);}
+.ff-arrow{color:var(--ink-faint); font-size:15px;}
+.ff-diagram.forward .ff-step{border-color:var(--teal-brd); color:var(--teal);}
+.ff-diagram.forward .ff-arrow{color:var(--teal);}
+.ff-diagram.backward .ff-step{border-color:var(--red-brd); color:var(--red);}
+.ff-diagram.backward .ff-arrow{color:var(--red); transform:scaleX(-1); display:inline-block;}
+
+.lr-legend{display:flex; gap:16px; flex-wrap:wrap; margin-top:12px; font-family:var(--mono); font-size:12.5px;}
+.lr-legend span{display:inline-flex; align-items:center; gap:7px; color:var(--ink-muted);}
+.lr-swatch{width:16px; height:4px; border-radius:2px; display:inline-block;}
+
+.ls-bars{display:flex; gap:12px; align-items:flex-end; height:150px; padding:10px 4px 0;}
+.ls-bar-col{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; gap:7px;}
+.ls-bar{width:100%; max-width:50px; background:linear-gradient(180deg,var(--red),var(--indigo)); border-radius:5px 5px 0 0; transition:height .4s ease;}
+.ls-bar-label{font-family:var(--mono); font-size:11.5px; color:var(--ink-faint);}
+.ls-bar-val{font-family:var(--mono); font-size:11px; color:var(--ink-muted);}
+
+.trans-row{display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap; margin-bottom:10px;}
+.trans-tag{font-family:var(--mono); font-size:11px; text-transform:uppercase; color:var(--ink-faint); width:110px; flex-shrink:0; padding-top:9px; font-weight:600;}
+.trans-text{font-size:15px; background:var(--paper2); border:1px solid var(--rule); border-radius:8px; padding:10px 14px; flex:1; min-width:220px;}
+
+.heat-row-label{font-family:var(--mono); font-size:11px; color:var(--ink-faint);}
+
+.chapter-nav{display:flex; justify-content:flex-end; padding:30px; max-width:760px;}
+.next-chapter-btn{
+  font-family:var(--mono); font-size:13.5px; color:var(--paper2); background:var(--ink); padding:15px 24px; border-radius:11px;
+  border:none; cursor:pointer; display:flex; align-items:center; gap:10px;
+}
+.next-chapter-btn:hover{background:var(--red);}
+</style>
+</head>
+<body>
+
+<div class="scrollbar" id="scrollbar"></div>
+
+<div class="topbar">
+  <button class="menu-btn" id="menuBtn">☰</button>
+  <div class="brand">The Annotated Transformer<span class="accent">.</span></div>
+  <div class="chapter-tabs">
+    <button class="chapter-tab active" data-chapter="1"><span class="num">01</span><span class="tab-label">Architecture</span></button>
+    <button class="chapter-tab" data-chapter="2"><span class="num">02</span><span class="tab-label">Training</span></button>
+    <button class="chapter-tab" data-chapter="3"><span class="num">03</span><span class="tab-label">Real World</span></button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay"></div>
+
+<div class="shell">
+
+  <!-- SIDEBAR: chapter 1 TOC -->
+  <nav class="sidebar toc" data-toc="1">
+    <div class="sidebar-title">Part 1 &middot; Model Architecture</div>
+    <a class="toc-link" href="#s-1-1"><span class="tnum">1.1</span>The Big Picture</a>
+    <a class="toc-link" href="#s-1-2"><span class="tnum">1.2</span>Generator</a>
+    <a class="toc-link" href="#s-1-3"><span class="tnum">1.3</span>Encoder Stack</a>
+    <a class="toc-link" href="#s-1-4"><span class="tnum">1.4</span>Decoder Stack</a>
+    <a class="toc-link" href="#s-1-5"><span class="tnum">1.5</span>Masking</a>
+    <a class="toc-link" href="#s-1-6"><span class="tnum">1.6</span>Attention</a>
+    <a class="toc-link" href="#s-1-7"><span class="tnum">1.7</span>Feed-Forward &amp; Embeddings</a>
+    <a class="toc-link" href="#s-1-8"><span class="tnum">1.8</span>Assembling the Model</a>
+  </nav>
+  <!-- SIDEBAR: chapter 2 TOC -->
+  <nav class="sidebar toc" data-toc="2" style="display:none;">
+    <div class="sidebar-title">Part 2 &middot; Model Training</div>
+    <a class="toc-link" href="#s-2-1"><span class="tnum">2.1</span>Batches &amp; Masking</a>
+    <a class="toc-link" href="#s-2-2"><span class="tnum">2.2</span>The Training Loop</a>
+    <a class="toc-link" href="#s-2-3"><span class="tnum">2.3</span>Optimizer &amp; LR Schedule</a>
+    <a class="toc-link" href="#s-2-4"><span class="tnum">2.4</span>Label Smoothing</a>
+    <a class="toc-link" href="#s-2-5"><span class="tnum">2.5</span>Copy Task Example</a>
+  </nav>
+  <!-- SIDEBAR: chapter 3 TOC -->
+  <nav class="sidebar toc" data-toc="3" style="display:none;">
+    <div class="sidebar-title">Part 3 &middot; Real World Example</div>
+    <a class="toc-link" href="#s-3-1"><span class="tnum">3.1</span>Loading Real Data</a>
+    <a class="toc-link" href="#s-3-2"><span class="tnum">3.2</span>Batching for Speed</a>
+    <a class="toc-link" href="#s-3-3"><span class="tnum">3.3</span>Training at Scale</a>
+    <a class="toc-link" href="#s-3-4"><span class="tnum">3.4</span>Checking the Output</a>
+    <a class="toc-link" href="#s-3-5"><span class="tnum">3.5</span>Attention Visualization</a>
+  </nav>
+
+  <main class="main">
+
+  <!-- ======================= CHAPTER 1 ======================= -->
+  <article class="chapter active" data-chapter="1">
+    <div class="chapter-hero">
+      <div class="chapter-eyebrow">Part 1 of 3</div>
+      <h1>Model Architecture</h1>
+      <p>Every "black box" in the Transformer is really a small, readable function passing numbers to the next one. This part walks through the actual code, piece by piece, with worked examples for each.</p>
+    </div>
+
+    <!-- 1.1 -->
+    <section class="entry" id="s-1-1">
+      <div class="entry-eyebrow">STEP 1.1</div>
+      <h2>The Big Picture</h2>
+      <p class="dek">One sentence goes in, one translated sentence comes out. Before opening any single class, it helps to see the whole pipeline once, end to end.</p>
+
+      <div class="codepanel"><div class="fname">EncoderDecoder — the base class</div><pre class="code"><span class="kw">class</span> <span class="fn">EncoderDecoder</span>(nn.Module):
+    <span class="cm">"""A standard Encoder-Decoder architecture. Base for this and many other models."""</span>
+
+    <span class="kw">def</span> __init__(self, encoder, decoder, src_embed, tgt_embed, generator):
+        super().__init__()
+        self.encoder = encoder        <span class="cm"># reads & understands the input sentence</span>
+        self.decoder = decoder        <span class="cm"># writes the output sentence, one word at a time</span>
+        self.src_embed = src_embed    <span class="cm"># turns input words into numeric vectors</span>
+        self.tgt_embed = tgt_embed    <span class="cm"># turns output words into numeric vectors</span>
+        self.generator = generator    <span class="cm"># turns final numbers into word probabilities</span>
+
+    <span class="kw">def</span> forward(self, src, tgt, src_mask, tgt_mask):
+        <span class="kw">return</span> self.decode(self.encode(src, src_mask), src_mask, tgt, tgt_mask)
+
+    <span class="kw">def</span> encode(self, src, src_mask):
+        <span class="kw">return</span> self.encoder(self.src_embed(src), src_mask)
+
+    <span class="kw">def</span> decode(self, memory, src_mask, tgt, tgt_mask):
+        <span class="kw">return</span> self.decoder(self.tgt_embed(tgt), memory, src_mask, tgt_mask)</pre></div>
+
+      <p class="body-text">This class contains <b>zero</b> attention logic and zero linear layers of its own. It is pure plumbing — five sub-modules are handed in from outside (built later by <code>make_model()</code> in step 1.8), and this class just calls them in the right order: embed the source, encode it, embed the target, decode it. That separation is deliberate: it keeps the overall "shape" of an encoder-decoder model independent of exactly how any one part is implemented.</p>
+
+      <div class="annotated">
+        <p class="body-text" style="margin:0;">Notice the model is split into two separate calls, <code>encode()</code> and <code>decode()</code>, rather than one giant function. Translation is not symmetric: the model must read the <em>entire</em> source sentence before it can safely produce anything (you cannot correctly translate the start of a sentence into French without knowing how the sentence ends), but it must write the target <b>one word at a time</b>, since it does not know the full translation in advance. Splitting the two calls lets <code>encode()</code> run exactly once, while <code>decode()</code> gets called repeatedly during generation, reusing the same encoded memory every time instead of re-reading the source sentence over and over.</p>
+        <div class="margin-note"><span class="mtag">Analogy</span>The encoder is a reader who fully digests the English sentence before saying anything. The decoder is a writer producing French one word at a time, constantly glancing back at the reader's notes ("memory") to check what the source actually said.</div>
+      </div>
+
+      <h4 style="font-family:var(--serif); font-size:18px; margin:26px 0 4px;">Trace the data flow — click a block</h4>
+      <svg class="flow" viewBox="0 0 980 300" xmlns="http://www.w3.org/2000/svg">
+        <defs><marker id="arrowhead" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#948b78"/></marker></defs>
+        <text x="10" y="60" class="flow-caption">SOURCE</text>
+        <text x="10" y="240" class="flow-caption">TARGET</text>
+        <g class="flow-node active" data-node="src"><rect x="10" y="70" width="110" height="46" rx="8"/><text x="65" y="90" text-anchor="middle" class="label">"I love cats"</text><text x="65" y="106" text-anchor="middle">token ids</text></g>
+        <path class="flow-arrow" d="M120,93 L170,93"/>
+        <g class="flow-node" data-node="src_embed"><rect x="170" y="70" width="120" height="46" rx="8"/><text x="230" y="90" text-anchor="middle" class="label">src_embed</text><text x="230" y="106" text-anchor="middle">+ position</text></g>
+        <path class="flow-arrow" d="M290,93 L340,93"/>
+        <g class="flow-node" data-node="encode"><rect x="340" y="70" width="130" height="46" rx="8"/><text x="405" y="90" text-anchor="middle" class="label">Encoder</text><text x="405" y="106" text-anchor="middle">6x layers</text></g>
+        <path class="flow-arrow" d="M470,93 C 520,93 520,160 570,160"/>
+        <g class="flow-node" data-node="memory"><rect x="570" y="137" width="110" height="46" rx="8"/><text x="625" y="157" text-anchor="middle" class="label">memory</text><text x="625" y="173" text-anchor="middle">[1,3,512]</text></g>
+        <path class="flow-arrow" d="M680,160 L730,160"/>
+        <g class="flow-node" data-node="tgt"><rect x="10" y="220" width="110" height="46" rx="8"/><text x="65" y="240" text-anchor="middle" class="label">"J'aime les"</text><text x="65" y="256" text-anchor="middle">token ids</text></g>
+        <path class="flow-arrow" d="M120,243 L170,243"/>
+        <g class="flow-node" data-node="tgt_embed"><rect x="170" y="220" width="120" height="46" rx="8"/><text x="230" y="240" text-anchor="middle" class="label">tgt_embed</text><text x="230" y="256" text-anchor="middle">+ position</text></g>
+        <path class="flow-arrow" d="M290,243 L730,243"/>
+        <g class="flow-node" data-node="decoder"><rect x="730" y="137" width="130" height="130" rx="8"/><text x="795" y="197" text-anchor="middle" class="label">Decoder</text><text x="795" y="213" text-anchor="middle">6x layers</text></g>
+        <path class="flow-arrow" d="M860,200 L910,200"/>
+        <g class="flow-node" data-node="generator"><rect x="910" y="177" width="65" height="46" rx="8"/><text x="942" y="197" text-anchor="middle" class="label" font-size="11">Gen.</text><text x="942" y="213" text-anchor="middle" font-size="9">softmax</text></g>
+      </svg>
+      <div class="subcard" style="margin-top:16px;">
+        <h4 id="fd-title">Source sentence</h4>
+        <p class="body-text" id="fd-text" style="margin:6px 0;">The raw input sentence, represented as token IDs.</p>
+        <div class="ledger" id="fd-io" style="margin:8px 0 0;"><div class="ledger-row"><span class="lk">example</span><span class="lv">"I love cats" &rarr; [5, 42, 17]</span></div></div>
+      </div>
+
+      <div class="callout walk"><span class="ctag">Follow the numbers, start to finish</span>
+        <ol>
+          <li><span class="wn">1.</span> <code>"I love cats"</code> is tokenized into 3 integer ids, e.g. <code>[5, 42, 17]</code>, batched as shape <code>[1, 3]</code> — 1 sentence, 3 tokens.</li>
+          <li><span class="wn">2.</span> <code>src_embed</code> looks up each id and adds position info &rarr; <code>[1, 3, 512]</code>: each word is now a 512-number vector.</li>
+          <li><span class="wn">3.</span> The <code>Encoder</code> refines this through 6 layers &rarr; still <code>[1, 3, 512]</code>, now called <b>memory</b>.</li>
+          <li><span class="wn">4.</span> The partial target <code>"J'aime les"</code> (2 tokens so far) goes through the same steps &rarr; <code>[1, 2, 512]</code>.</li>
+          <li><span class="wn">5.</span> The <code>Decoder</code> combines the target embeddings with <code>memory</code> across 6 layers &rarr; <code>[1, 2, 512]</code>.</li>
+          <li><span class="wn">6.</span> The <code>Generator</code> projects the <em>last</em> position to vocabulary size and applies softmax &rarr; a probability for every possible next word.</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- 1.2 -->
+    <section class="entry" id="s-1-2">
+      <div class="entry-eyebrow">STEP 1.2</div>
+      <h2>Generator — The Output Layer</h2>
+      <p class="dek">The very last step of the model: turning a vector of numbers into an actual predicted word with a confidence score attached.</p>
+
+      <div class="codepanel"><div class="fname">Generator</div><pre class="code"><span class="kw">class</span> <span class="fn">Generator</span>(nn.Module):
+    <span class="cm">"Define standard linear + softmax generation step."</span>
+    <span class="kw">def</span> __init__(self, d_model, vocab):
+        self.proj = nn.Linear(d_model, vocab)   <span class="cm"># 512 numbers in -> one raw score per vocab word out</span>
+
+    <span class="kw">def</span> forward(self, x):
+        <span class="kw">return</span> log_softmax(self.proj(x), dim=-1)</pre></div>
+
+      <p class="body-text"><code>self.proj</code> is one fully-connected layer with a weight matrix of shape <code>[512, vocab_size]</code>. Multiplying a 512-number vector by this matrix produces one raw, unbounded "score" per vocabulary word — the model's un-normalized vote for how likely each word is. <code>log_softmax</code> converts those scores into log-probabilities that, once exponentiated, sum to exactly 1.</p>
+
+      <div class="ledger">
+        <div class="ledger-title">Worked example — toy 5-word vocabulary</div>
+        <div class="ledger-row"><span class="lk">raw scores</span><span class="lv">[1.2, 4.1, 0.3, -0.8, 2.0]</span><span class="note"># proj(x) output</span></div>
+        <div class="ledger-row"><span class="lk">exponentiate</span><span class="lv">[3.32, 60.34, 1.35, 0.45, 7.39]</span></div>
+        <div class="ledger-row"><span class="lk">normalize</span><span class="lv">[0.045, 0.826, 0.018, 0.006, 0.101]</span><span class="note"># divide each by the sum, 73.85</span></div>
+        <div class="ledger-row"><span class="lk">reading</span><span class="lv">word 2 ("chats") wins with 82.6% probability</span></div>
+      </div>
+
+      <div class="annotated">
+        <p class="body-text" style="margin:0;">Note carefully: <code>EncoderDecoder.forward()</code> from step 1.1 does <b>not</b> call the Generator — it stops at the raw decoder output. The Generator is applied separately, only when a word prediction is actually needed: once per label position during loss computation while training, or just for the single newest position during step-by-step decoding at inference.</p>
+        <div class="margin-note"><span class="mtag">Analogy</span>Everything before this point speaks the model's internal "math language" — 512 numbers nobody can read directly. The Generator is the final translation of that internal thought into an actual, sayable word.</div>
+      </div>
+    </section>
+
+    <!-- 1.3 -->
+    <section class="entry" id="s-1-3">
+      <div class="entry-eyebrow">STEP 1.3</div>
+      <h2>The Encoder Stack</h2>
+      <p class="dek">Six identical layers that refine the sentence's meaning — like passing a draft through six editors in a row, each improving it slightly. Expand each piece below.</p>
+      <div class="mini-accordion" id="acc-encoder"></div>
+    </section>
+
+    <!-- 1.4 -->
+    <section class="entry" id="s-1-4">
+      <div class="entry-eyebrow">STEP 1.4</div>
+      <h2>The Decoder Stack</h2>
+      <p class="dek">Also six layers — but each one does three things instead of two: look at its own earlier words, look back at the encoder, then think it over.</p>
+      <div class="mini-accordion" id="acc-decoder"></div>
+
+      <div class="ledger">
+        <div class="ledger-title">Encoder layer vs. Decoder layer</div>
+        <div class="ledger-row"><span class="lk">Encoder</span><span class="lv">self-attention &rarr; feed-forward</span><span class="note"># 2 sub-layers, uses src_mask</span></div>
+        <div class="ledger-row"><span class="lk">Decoder</span><span class="lv">self-attention &rarr; cross-attention &rarr; feed-forward</span><span class="note"># 3 sub-layers, uses tgt_mask + src_mask</span></div>
+      </div>
+      <div class="callout why"><span class="ctag">Why the extra sub-layer?</span>Cross-attention (called <code>src_attn</code> in the code) is the single point in the whole architecture where information flows from the source language into the target language. Without it, the decoder would only ever see the words it has already written, with no way to consult the sentence it's supposed to be translating.</div>
+    </section>
+
+    <!-- 1.5 -->
+    <section class="entry" id="s-1-5">
+      <div class="entry-eyebrow">STEP 1.5</div>
+      <h2>Masking</h2>
+      <p class="dek">A mask is a rule that says "block attention to this position." Two independent rules exist, and the decoder combines both into one.</p>
+
+      <div class="codepanel"><div class="fname">subsequent_mask()</div><pre class="code"><span class="kw">def</span> <span class="fn">subsequent_mask</span>(size):
+    <span class="cm">"Mask out subsequent positions."</span>
+    attn_shape = (1, size, size)
+    <span class="cm"># triu keeps only the upper triangle (above the diagonal) -> "comes later" positions</span>
+    mask = torch.triu(torch.ones(attn_shape), diagonal=1).type(torch.uint8)
+    <span class="kw">return</span> mask == 0   <span class="cm"># flip: True = allowed to attend, False = blocked</span></pre></div>
+
+      <p class="body-text">Reading line by line: <code>torch.triu(..., diagonal=1)</code> builds a grid with 1s above the main diagonal and 0s elsewhere — a 1 at <code>[i,j]</code> means "word j comes strictly after word i." Comparing to <code>== 0</code> flips it, so the result is <code>True</code> exactly where <code>j &lt;= i</code>.</p>
+
+      <div class="subcard">
+        <h4>Try both rules yourself</h4>
+        <div class="btn-row">
+          <button class="mbtn active" data-mask="padding">Padding mask</button>
+          <button class="mbtn" data-mask="subsequent">Subsequent (look-ahead) mask</button>
+          <button class="mbtn" data-mask="combined">Combined tgt_mask</button>
+        </div>
+        <div class="mask-wrap">
+          <table class="mgrid" id="mgrid"></table>
+          <div style="flex:1; min-width:220px;"><p class="body-text" id="mask-explain" style="margin-top:0;"></p></div>
+        </div>
+        <div class="legend">
+          <span><span class="swatch" style="background:var(--teal-dim); border:1px solid var(--teal);"></span> allowed</span>
+          <span><span class="swatch" style="background:var(--red-dim); border:1px solid var(--red);"></span> blocked</span>
+        </div>
+      </div>
+
+      <div class="callout why"><span class="ctag">What breaks without the subsequent mask?</span>The full correct target sentence is fed to the decoder at once during training, for speed. If the model could freely see future positions, it could simply copy the next word out of its own input, driving loss to zero while learning nothing. At real inference time, future words don't exist yet — so a model trained that way would have no idea what to do. This mismatch is called <b>exposure bias</b>, and the mask exists specifically to prevent it.</div>
+    </section>
+
+    <!-- 1.6 -->
+    <section class="entry" id="s-1-6">
+      <div class="entry-eyebrow">STEP 1.6</div>
+      <h2>The Attention Mechanism</h2>
+      <p class="dek">The single most important idea in the architecture: for every word (query), decide how much to listen to every other word (key), then blend their content (value) accordingly.</p>
+
+      <div class="codepanel"><div class="fname">attention()</div><pre class="code"><span class="kw">def</span> <span class="fn">attention</span>(query, key, value, mask=None, dropout=None):
+    <span class="cm">"Compute 'Scaled Dot Product Attention'"</span>
+    d_k = query.size(-1)
+    scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
+    <span class="kw">if</span> mask <span class="kw">is not</span> None:
+        scores = scores.masked_fill(mask == 0, -1e9)
+    p_attn = scores.softmax(dim=-1)
+    <span class="kw">if</span> dropout <span class="kw">is not</span> None:
+        p_attn = dropout(p_attn)
+    <span class="kw">return</span> torch.matmul(p_attn, value), p_attn</pre></div>
+
+      <div class="callout walk"><span class="ctag">A fully worked numeric example (d_k = 2, for simplicity)</span>
+        <p class="body-text" style="margin:0 0 8px;">Say the query for "cats" is <code>[1, 0]</code>, and the keys for "I", "love", "cats" are <code>[1,1]</code>, <code>[0,1]</code>, <code>[2,0]</code>.</p>
+        <ol>
+          <li><span class="wn">1. Dot products:</span> cats&middot;I = 1&times;1+0&times;1 = <b>1</b>. cats&middot;love = 1&times;0+0&times;1 = <b>0</b>. cats&middot;cats = 1&times;2+0&times;0 = <b>2</b>.</li>
+          <li><span class="wn">2. Scale by &radic;2 &asymp; 1.41:</span> scores become <code>[0.71, 0, 1.41]</code>.</li>
+          <li><span class="wn">3. Softmax:</span> roughly <code>[0.29, 0.14, 0.57]</code> — these sum to 1.</li>
+          <li><span class="wn">4. Weighted sum:</span> new "cats" vector = 29% value(I) + 14% value(love) + 57% value(cats).</li>
+        </ol>
+      </div>
+
+      <div class="subcard">
+        <h4>Try it yourself — click a word</h4>
+        <div class="attn-words">
+          <button class="wbtn active" data-word="I">I</button>
+          <button class="wbtn" data-word="love">love</button>
+          <button class="wbtn" data-word="cats">cats</button>
+        </div>
+        <div id="bars"></div>
+      </div>
+
+      <div class="callout why"><span class="ctag">Why divide by &radic;d_k?</span>If query/key entries are random with mean 0 and variance 1, their dot product over d_k dimensions has variance d_k — so as d_k grows (to 64 in the real model), raw scores can get very large. Very large inputs push softmax toward near-0/near-1 outputs almost everywhere, which makes its gradient nearly zero — training stalls. Dividing by &radic;d_k keeps scores in a range where softmax still has a useful gradient.</div>
+
+      <h4 style="font-family:var(--serif); font-size:20px; margin:30px 0 6px;">Multi-Headed Attention <span class="mono" style="font-size:13px; color:var(--ink-faint);">h = 8 heads</span></h4>
+      <p class="body-text">Q, K, and V are each first passed through their <em>own learned</em> linear layer (so this is not a fixed slice of the raw embedding — the layer's weights decide what ends up where), then split into 8 chunks of 64 numbers. The exact <code>attention()</code> function above runs independently on each 64-number chunk, and the 8 results are concatenated back together and passed through one final linear layer.</p>
+      <div class="ledger">
+        <div class="ledger-row"><span class="lk">input</span><span class="lv">Q/K/V — [1, 3, 512]</span></div>
+        <div class="ledger-row"><span class="lk">project</span><span class="lv">4 separate Linear(512,512) layers — for Q, K, V, and the output</span></div>
+        <div class="ledger-row"><span class="lk">split</span><span class="lv">[1, 8, 3, 64] — 8 heads, each a 64-dim slice of the projected vector</span></div>
+        <div class="ledger-row"><span class="lk">attend</span><span class="lv">attention() runs separately per head, in parallel</span></div>
+        <div class="ledger-row"><span class="lk">combine</span><span class="lv">[1, 3, 512] — heads concatenated + final linear layer</span></div>
+      </div>
+      <div class="annotated">
+        <p class="body-text" style="margin:0;">Why bother splitting instead of just running one big attention pass? A single attention computation produces one weighted average per word — averaging necessarily blurs together whatever different relationships that word has with different neighbors. Eight smaller, independent attention computations let each head specialize in a different kind of relationship, and the final linear layer learns how to best combine those 8 specialized views.</p>
+        <div class="margin-note"><span class="mtag">Analogy</span>8 specialists read the same sentence, each trained to focus on a different kind of relationship — grammar, topic, local word order. Their reports get concatenated and combined by one final layer.</div>
+      </div>
+    </section>
+
+    <!-- 1.7 -->
+    <section class="entry" id="s-1-7">
+      <div class="entry-eyebrow">STEP 1.7</div>
+      <h2>Feed-Forward, Embeddings &amp; Position</h2>
+      <p class="dek">After words finish talking (attention), each one privately "thinks it over." Before any of this can happen, raw words first had to become numbers with a sense of order.</p>
+
+      <h4 style="font-family:var(--serif); font-size:19px; margin-bottom:6px;">Position-wise Feed-Forward Network</h4>
+      <div class="codepanel"><div class="fname">PositionwiseFeedForward</div><pre class="code"><span class="kw">class</span> <span class="fn">PositionwiseFeedForward</span>(nn.Module):
+    <span class="kw">def</span> __init__(self, d_model, d_ff, dropout=0.1):
+        self.w_1 = nn.Linear(d_model, d_ff)   <span class="cm"># 512 -> 2048, expand</span>
+        self.w_2 = nn.Linear(d_ff, d_model)   <span class="cm"># 2048 -> 512, compress back</span>
+        self.dropout = nn.Dropout(dropout)
+
+    <span class="kw">def</span> forward(self, x):
+        <span class="kw">return</span> self.w_2(self.dropout(self.w_1(x).relu()))</pre></div>
+      <p class="body-text">This runs <b>identically and independently on every word position</b> — the same two weight matrices are reused for "I", "love", and "cats" alike, and none of them can see what happens to the others here (cross-word mixing already happened in attention, one step earlier).</p>
+      <div class="btn-row">
+        <button class="mbtn active" data-fb="forward">Forward pass</button>
+        <button class="mbtn" data-fb="backward">Backward pass</button>
+      </div>
+      <div class="ff-diagram forward" id="ffdiagram">
+        <span class="ff-step">x</span><span class="ff-arrow">&rarr;</span><span class="ff-step">w_1</span><span class="ff-arrow">&rarr;</span><span class="ff-step">relu</span><span class="ff-arrow">&rarr;</span><span class="ff-step">dropout</span><span class="ff-arrow">&rarr;</span><span class="ff-step">w_2</span><span class="ff-arrow">&rarr;</span><span class="ff-step">output</span>
+      </div>
+      <p class="body-text" id="fb-caption">Forward: input flows left to right through the network.</p>
+      <div class="annotated">
+        <p class="body-text" style="margin:0;">No single layer "has" backpropagation on its own — it is one unified process across the entire model. PyTorch's autograd silently records every operation in <code>forward()</code>. When <code>loss.backward()</code> is called downstream, gradients flow back through this exact chain in reverse, alongside every other weight in the encoder, decoder, and embeddings, all in one pass.</p>
+        <div class="margin-note"><span class="mtag">Analogy</span>Attention is a group discussion where words share information. The feed-forward step is each word going alone into a private room to think over what it just heard, using the same fixed thinking process every word uses.</div>
+      </div>
+
+      <div class="two-col">
+        <div class="subcard">
+          <h4>Embeddings</h4>
+          <pre class="code" style="font-size:13px; color:var(--ink); background:none;"><span class="kw" style="color:var(--indigo);">def</span> forward(self, x):
+    <span class="kw" style="color:var(--indigo);">return</span> self.lut(x) * math.sqrt(self.d_model)</pre>
+          <p class="body-text" style="font-size:15px;">A lookup table: each word ID maps to a learned 512-number vector, then scaled up by &radic;512 &asymp; 22.6.</p>
+          <div class="callout why" style="margin:10px 0 0; font-size:14px; padding:12px 14px;"><span class="ctag" style="font-size:10.5px;">Why scale by &radic;d_model?</span>Positional encodings (right) are bounded between -1 and 1. Without scaling, embedding values could be comparatively tiny next to the positional signal, letting position drown out word identity.</div>
+        </div>
+        <div class="subcard">
+          <h4>Positional Encoding</h4>
+          <pre class="code" style="font-size:13px; color:var(--ink); background:none;">PE(pos,2i)   = sin(pos / 10000^(2i/d))
+PE(pos,2i+1) = cos(pos / 10000^(2i/d))</pre>
+          <p class="body-text" style="font-size:15px;">A fixed wave, computed once, added on top of every embedding so the model can tell word order apart.</p>
+          <table class="numtable" style="margin-top:10px; font-size:12px;">
+            <tr><th>pos</th><th>sin(pos)</th><th>cos(pos)</th></tr>
+            <tr><td>0</td><td class="hl">0.000</td><td>1.000</td></tr>
+            <tr><td>1</td><td class="hl">0.841</td><td>0.540</td></tr>
+            <tr><td>2</td><td class="hl">0.909</td><td>-0.416</td></tr>
+          </table>
+          <p class="body-text" style="font-size:12.5px; color:var(--ink-faint); margin-top:6px;">(dimension pair i=0, so the exponent term is 1 and this reduces to plain sin/cos of the position)</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 1.8 -->
+    <section class="entry" id="s-1-8">
+      <div class="entry-eyebrow">STEP 1.8</div>
+      <h2>Assembling the Full Model</h2>
+      <p class="dek">One function builds every piece from 1.1&ndash;1.7 and wires them into a single, trainable EncoderDecoder.</p>
+
+      <div class="codepanel"><div class="fname">make_model()</div><pre class="code"><span class="kw">def</span> <span class="fn">make_model</span>(src_vocab, tgt_vocab, N=6, d_model=512, d_ff=2048, h=8, dropout=0.1):
+    c = copy.deepcopy
+    attn = MultiHeadedAttention(h, d_model)
+    ff = PositionwiseFeedForward(d_model, d_ff, dropout)
+    position = PositionalEncoding(d_model, dropout)
+    model = EncoderDecoder(
+        Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), N),
+        Decoder(DecoderLayer(d_model, c(attn), c(attn), c(ff), dropout), N),
+        nn.Sequential(Embeddings(d_model, src_vocab), c(position)),
+        nn.Sequential(Embeddings(d_model, tgt_vocab), c(position)),
+        Generator(d_model, tgt_vocab))
+    <span class="kw">for</span> p <span class="kw">in</span> model.parameters():
+        <span class="kw">if</span> p.dim() &gt; 1:
+            nn.init.xavier_uniform_(p)   <span class="cm"># stable random starting weights</span>
+    <span class="kw">return</span> model</pre></div>
+
+      <p class="body-text"><code>attn</code> and <code>ff</code> are each built <b>once</b>, then <code>c(attn)</code> — a deep copy — is passed in fresh every time they're reused: once for the encoder's self-attention, and <em>twice</em> for the decoder (self-attention and cross-attention). Each copy gets fully independent, separately-trainable weights.</p>
+
+      <div class="callout why"><span class="ctag">What would break without deepcopy?</span>If the same <code>attn</code> object were reused directly, all layers would literally share one set of weights in memory. Updating weights from layer 1's gradient would silently change layers 2 through 6 too, collapsing the model into one shared attention layer repeated 8 times — losing the ability of different layers to specialize.</div>
+
+      <div class="ledger">
+        <div class="ledger-row"><span class="lk">N = 6</span><span class="lv">encoder layers, and separately, 6 decoder layers</span></div>
+        <div class="ledger-row"><span class="lk">d_model</span><span class="lv">512 — size of every word's vector throughout</span></div>
+        <div class="ledger-row"><span class="lk">d_ff</span><span class="lv">2048 — expanded size inside feed-forward</span></div>
+        <div class="ledger-row"><span class="lk">h = 8</span><span class="lv">attention heads per block</span></div>
+      </div>
+
+      <div class="annotated">
+        <p class="body-text" style="margin:0;">Feeding <code>[1,2,3,4,5,6,7,8,9,10]</code> into a freshly-built, never-trained model produces garbage — proof the architecture runs end-to-end and every shape lines up, but the weights haven't learned anything yet: <code>src=[1..10]</code> &rarr; <code>out=[0,3,4,4,4,4,4,4,4,4]</code>. Part 2 is where it actually learns.</p>
+        <div class="margin-note"><span class="mtag">Analogy</span><code>make_model()</code> is a recipe card: it measures out 6 independent copies of each layer, assembles them in order, and hands you a fully-wired but still "clueless" model.</div>
+      </div>
+    </section>
+
+    <div class="chapter-nav"><button class="next-chapter-btn" data-goto="2">Continue to Part 2 — Model Training &rarr;</button></div>
+  </article>
+
+  <!-- ======================= CHAPTER 2 ======================= -->
+  <article class="chapter" data-chapter="2">
+    <div class="chapter-hero">
+      <div class="chapter-eyebrow">Part 2 of 3</div>
+      <h1>Model Training</h1>
+      <p>The architecture from Part 1 doesn't know anything yet. This part covers exactly how it learns: how batches are prepared, what happens on every training step, and a toy example that proves the whole pipeline works.</p>
+    </div>
+
+    <!-- 2.1 -->
+    <section class="entry" id="s-2-1">
+      <div class="entry-eyebrow">STEP 2.1</div>
+      <h2>Batches &amp; Masking</h2>
+      <p class="dek">A small helper object that bundles a batch of sentences and automatically builds every mask the model needs. This is one of the most misread parts of the whole notebook, so we'll walk through one concrete sentence in full.</p>
+
+      <div class="codepanel"><div class="fname">Batch</div><pre class="code"><span class="kw">class</span> <span class="fn">Batch</span>:
+    <span class="cm">"""Object for holding a batch of data with mask during training."""</span>
+    <span class="kw">def</span> __init__(self, src, tgt=None, pad=2):        <span class="cm"># 2 = &lt;blank&gt; padding token id</span>
+        self.src = src
+        self.src_mask = (src != pad).unsqueeze(-2)      <span class="cm"># True wherever src is a real (non-pad) token</span>
+        <span class="kw">if</span> tgt <span class="kw">is not</span> None:
+            self.tgt = tgt[:, :-1]         <span class="cm"># decoder INPUT: every token except the last</span>
+            self.tgt_y = tgt[:, 1:]        <span class="cm"># decoder LABELS: every token except the first</span>
+            self.tgt_mask = self.make_std_mask(self.tgt, pad)
+            self.ntokens = (self.tgt_y != pad).data.sum()  <span class="cm"># count of real (non-pad) labels</span>
+
+    <span class="kw">@staticmethod</span>
+    <span class="kw">def</span> make_std_mask(tgt, pad):
+        <span class="cm">"Create a mask to hide padding and future words."</span>
+        tgt_mask = (tgt != pad).unsqueeze(-2)
+        <span class="kw">return</span> tgt_mask & subsequent_mask(tgt.size(-1)).type_as(tgt_mask.data)</pre></div>
+
+      <p class="body-text">Let's use one concrete sentence throughout, with this tiny made-up vocabulary:</p>
+      <table class="numtable">
+        <tr><th>word</th><th>&lt;s&gt;</th><th>the</th><th>cat</th><th>sat</th><th>on</th><th>mat</th><th>&lt;/s&gt;</th><th>&lt;blank&gt;</th></tr>
+        <tr><th>id</th><td>1</td><td>5</td><td>6</td><td>7</td><td>8</td><td>9</td><td>3</td><td class="hl">2</td></tr>
+      </table>
+      <p class="body-text">The sentence "the cat sat on the mat", wrapped in start/end tokens and padded to a fixed batch length of 10, looks like this as raw <code>tgt</code>:</p>
+      <div class="ledger">
+        <div class="ledger-row"><span class="lk">tgt (raw)</span><span class="lv">[1, 5, 6, 7, 8, 5, 9, 3, 2, 2]</span><span class="note"># &lt;s&gt; the cat sat on the mat &lt;/s&gt; &lt;blank&gt; &lt;blank&gt;</span></div>
+      </div>
+
+      <div class="callout walk"><span class="ctag">Now watch what __init__ does to it, step by step</span>
+        <ol>
+          <li><span class="wn">1.</span> <code>tgt[:, :-1]</code> drops the <em>last</em> token &rarr; decoder input = <code>[1, 5, 6, 7, 8, 5, 9, 3, 2]</code> (9 tokens).</li>
+          <li><span class="wn">2.</span> <code>tgt[:, 1:]</code> drops the <em>first</em> token &rarr; labels (<code>tgt_y</code>) = <code>[5, 6, 7, 8, 5, 9, 3, 2, 2]</code> (9 tokens).</li>
+          <li><span class="wn">3.</span> Lay the two side by side — decoder input position <i>i</i> must predict label position <i>i</i>:</li>
+        </ol>
+        <table class="numtable" style="margin-top:4px;">
+          <tr><th>position</th><td>0</td><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td><td>7</td><td>8</td></tr>
+          <tr><th>decoder sees</th><td>&lt;s&gt;</td><td>the</td><td>cat</td><td>sat</td><td>on</td><td>the</td><td>mat</td><td>&lt;/s&gt;</td><td>&lt;pad&gt;</td></tr>
+          <tr><th>must predict</th><td class="hl">the</td><td class="hl">cat</td><td class="hl">sat</td><td class="hl">on</td><td class="hl">the</td><td class="hl">mat</td><td class="hl">&lt;/s&gt;</td><td>&lt;pad&gt;</td><td>&lt;pad&gt;</td></tr>
+        </table>
+        <ol start="4">
+          <li><span class="wn">4.</span> <code>ntokens</code> counts labels that are NOT padding: positions 0&ndash;6 are real (7 tokens); positions 7&ndash;8 are padding and excluded &rarr; <code>ntokens = 7</code>. This matters later in step 2.2, where the total loss is divided by <code>ntokens</code> so padding never dilutes the average.</li>
+        </ol>
+      </div>
+
+      <p class="body-text">Now for the mask. <code>make_std_mask</code> combines two separate rules into the single <code>tgt_mask</code> the decoder actually uses. Using the same 9-token decoder input from above:</p>
+      <div class="subcard">
+        <h4>The actual combined mask for this sentence</h4>
+        <table class="mgrid" id="mgrid2" style="margin:12px 0;"></table>
+        <p class="body-text" style="font-size:14.5px; margin:10px 0 0;">Row = the position doing the attending. Column = the position being looked at. Notice row 8 (the padding position) is mostly irrelevant — its prediction is thrown away anyway, since its label is also padding. The important structure is the staircase pattern in the first 8 rows: each real position can see itself and everything before it, never after.</p>
+      </div>
+
+      <div class="callout why"><span class="ctag">Why build the mask from the DECODER INPUT, not the full sentence?</span><code>make_std_mask</code> is called on <code>self.tgt</code> (the 9-token input), not the original 10-token sentence. That's because the mask's job is to control what the decoder is allowed to look at <em>while making a prediction</em> — and the decoder only ever sees the 9 input tokens, never the label tokens. The label tokens (<code>tgt_y</code>) exist purely to grade the prediction afterward; they are never fed into the model.</div>
+
+      <div class="annotated">
+        <p class="body-text" style="margin:0;">Zoom out one level: in a real batch there are many sentences of different lengths side by side (covered fully in step 3.2). A short 4-word sentence padded up to the same 10-token batch width will have padding starting much earlier in its row — the padding half of this same mask is what stops every other sentence's real words from ever attending to that filler.</p>
+        <div class="margin-note"><span class="mtag">Analogy</span>Like a fill-in-the-blank worksheet: the decoder sees words 1 through n-1 and must guess word 2 through n. <code>tgt_y</code> is the answer key used to grade every guess, and the mask is the ruler placed over the page so no one can peek ahead at the next blank.</div>
+      </div>
+    </section>
+
+    <!-- 2.2 -->
+    <section class="entry" id="s-2-2">
+      <div class="entry-eyebrow">STEP 2.2</div>
+      <h2>The Training Loop</h2>
+      <p class="dek">One function, run once per epoch, that pushes every batch through the model and nudges every weight a little further toward less error.</p>
+
+      <div class="codepanel"><div class="fname">run_epoch() — trimmed to essentials</div><pre class="code"><span class="kw">def</span> <span class="fn">run_epoch</span>(data_iter, model, loss_compute, optimizer, scheduler, mode="train"):
+    <span class="kw">for</span> i, batch <span class="kw">in</span> enumerate(data_iter):
+        out = model.forward(batch.src, batch.tgt, batch.src_mask, batch.tgt_mask)
+        loss, loss_node = loss_compute(out, batch.tgt_y, batch.ntokens)
+        <span class="kw">if</span> mode == "train":
+            loss_node.backward()          <span class="cm"># backprop: gradient for every weight</span>
+            optimizer.step()              <span class="cm"># nudge every weight a small step downhill</span>
+            optimizer.zero_grad()         <span class="cm"># clear gradients before the next batch</span>
+            scheduler.step()              <span class="cm"># advance the learning-rate schedule (2.3)</span>
+        total_loss += loss
+        total_tokens += batch.ntokens
+    <span class="kw">return</span> total_loss / total_tokens</pre></div>
+
+      <ul class="plist">
+        <li><b>1. Forward pass</b> — run the whole <code>EncoderDecoder</code> on this batch's <code>src</code>/<code>tgt</code>/masks (exactly the object built in step 2.1).</li>
+        <li><b>2. Loss computation</b> — compare predictions to <code>batch.tgt_y</code>, producing one number: how wrong the model currently is.</li>
+        <li><b>3. Backward pass</b> — <code>.backward()</code> computes, for every weight, how much changing it would change that loss.</li>
+        <li><b>4. Optimizer step</b> — every weight is nudged toward reducing the loss, scaled by the current learning rate.</li>
+      </ul>
+      <div class="ledger">
+        <div class="ledger-row"><span class="lk">step 40</span><span class="lv">Loss: 4.32 | Tokens/Sec: 1204 | LR: 3.1e-4</span></div>
+        <div class="ledger-row"><span class="lk">step 1040</span><span class="lv">Loss: 1.87 | ...</span><span class="note"># loss trends down over time</span></div>
+      </div>
+      <div class="callout why"><span class="ctag">Why zero_grad() before the next batch?</span>PyTorch <b>accumulates</b> gradients by default rather than replacing them. Skipping this step would add every new batch's gradient on top of all previous ones, and the optimizer would take wildly oversized, incorrect steps.</div>
+      <div class="annotated">
+        <p class="body-text" style="margin:0;">These four steps repeat for every batch in the dataset — that's one epoch. Multiple epochs are run in sequence, and the loss reported by <code>run_epoch</code> is expected to trend downward as training progresses.</p>
+        <div class="margin-note"><span class="mtag">Analogy</span>Like a student working through practice problems: attempt one, check the answer key, figure out what to adjust, tweak technique slightly, then move to the next problem with a clean slate.</div>
+      </div>
+    </section>
+
+    <!-- 2.3 -->
+    <section class="entry" id="s-2-3">
+      <div class="entry-eyebrow">STEP 2.3</div>
+      <h2>Optimizer &amp; Learning Rate Schedule</h2>
+      <p class="dek">Adam optimizer, plus a custom learning rate that ramps up for a while, then decays — instead of staying constant throughout training.</p>
+
+      <div class="codepanel"><div class="fname">rate()</div><pre class="code"><span class="kw">def</span> <span class="fn">rate</span>(step, model_size, factor, warmup):
+    <span class="kw">if</span> step == 0: step = 1
+    <span class="kw">return</span> factor * (model_size ** (-0.5) * min(step ** (-0.5), step * warmup ** (-1.5)))</pre></div>
+      <p class="body-text">The <code>min()</code> is the key trick: for early steps, <code>step &middot; warmup^-1.5</code> is smaller and grows linearly (the warm-up ramp); for later steps, <code>step^-0.5</code> becomes smaller and shrinks as 1/&radic;step (the decay).</p>
+      <div class="subcard">
+        <svg id="lrChart" viewBox="0 0 600 220" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div class="lr-legend">
+          <span><span class="lr-swatch" style="background:#2f6b53;"></span>d_model=512, warmup=4000</span>
+          <span><span class="lr-swatch" style="background:#8f6a17;"></span>d_model=512, warmup=8000</span>
+          <span><span class="lr-swatch" style="background:#a63a3a;"></span>d_model=256, warmup=4000</span>
+        </div>
+      </div>
+      <div class="callout why"><span class="ctag">Why warm up at all?</span>At the very start, weights are random and gradient estimates are noisy. Large early steps can push weights somewhere they never recover from. A short, low-LR warm-up lets internal statistics (like those inside LayerNorm) settle before the rate ramps to its productive peak.</div>
+      <div class="margin-note" style="max-width:600px;"><span class="mtag">Analogy</span>Like easing into a run: warm up gradually, hold a controlled peak pace, then ease off near the finish line — rather than sprinting flat-out from step one.</div>
+    </section>
+
+    <!-- 2.4 -->
+    <section class="entry" id="s-2-4">
+      <div class="entry-eyebrow">STEP 2.4</div>
+      <h2>Regularization: Label Smoothing</h2>
+      <p class="dek">Instead of telling the model the correct word is 100% certain, spread a small slice of confidence across every other word.</p>
+
+      <div class="codepanel"><div class="fname">LabelSmoothing</div><pre class="code"><span class="kw">class</span> <span class="fn">LabelSmoothing</span>(nn.Module):
+    <span class="kw">def</span> __init__(self, size, padding_idx, smoothing=0.0):
+        self.criterion = nn.KLDivLoss(reduction="sum")
+        self.confidence = 1.0 - smoothing     <span class="cm"># e.g. 0.9 mass for the correct word</span>
+        self.smoothing = smoothing            <span class="cm"># e.g. 0.1 mass spread across the rest</span>
+
+    <span class="kw">def</span> forward(self, x, target):
+        true_dist = x.data.clone()
+        true_dist.fill_(self.smoothing / (self.size - 2))
+        true_dist.scatter_(1, target.data.unsqueeze(1), self.confidence)
+        true_dist[:, self.padding_idx] = 0
+        <span class="kw">return</span> self.criterion(x, true_dist)</pre></div>
+      <p class="body-text">Normally, training uses a "one-hot" target: 100% on the correct word, 0% everywhere else. Label smoothing softens that: <code>confidence</code> (e.g. 90%) on the correct word, and the leftover <code>smoothing</code> mass divided evenly across every other word.</p>
+      <div class="btn-row">
+        <button class="mbtn active" data-ls="0">No smoothing</button>
+        <button class="mbtn" data-ls="0.1">Smoothing = 0.1</button>
+      </div>
+      <div class="ls-bars" id="lsBars"></div>
+      <p class="body-text" style="font-size:14px;">Target word: <b>index 2</b> of a 5-word example vocabulary.</p>
+      <div class="callout why"><span class="ctag">Why make the target deliberately "fuzzier"?</span>A model trained against a perfectly confident target is pushed to make its own probabilities as extreme as possible, causing overconfidence and worse generalization to new sentences. Label smoothing caps that confidence — it measurably <em>hurts</em> perplexity but <em>improves</em> real translation quality and BLEU score.</div>
+      <div class="margin-note" style="max-width:600px;"><span class="mtag">Analogy</span>Like a teacher who rewards the correct answer strongly but still leaves a sliver of credit spread around the room, so the student never becomes smugly overconfident in exactly one answer.</div>
+    </section>
+
+    <!-- 2.5 -->
+    <section class="entry" id="s-2-5">
+      <div class="entry-eyebrow">STEP 2.5</div>
+      <h2>A First Example: The Copy Task</h2>
+      <p class="dek">Before tackling real translation, train on a trivial "copy" task — the "hello world" that proves the whole pipeline works before investing hours of real training time.</p>
+
+      <div class="codepanel"><div class="fname">data_gen()</div><pre class="code"><span class="kw">def</span> <span class="fn">data_gen</span>(V, batch_size, nbatches):
+    <span class="kw">for</span> i <span class="kw">in</span> range(nbatches):
+        data = torch.randint(1, V, size=(batch_size, 10))   <span class="cm"># random ints, 10 per sentence</span>
+        data[:, 0] = 1                                        <span class="cm"># force a fixed start token</span>
+        <span class="kw">yield</span> Batch(data.clone(), data.clone(), 0)          <span class="cm"># src == tgt: echo the input back</span></pre></div>
+      <p class="body-text">Since <code>src</code> and <code>tgt</code> are the same random sequence, there's no real translation — the model just has to learn to echo its input, using the exact machinery already covered: masking (2.1), the training loop (2.2), the LR schedule (2.3), and label smoothing (2.4).</p>
+      <div class="callout walk"><span class="ctag">Watching it actually learn, over 20 epochs</span>
+        <ol>
+          <li><span class="wn">Epoch 0:</span> <code>src=[0,1,2,3,4,5,6,7,8,9]</code> &rarr; <code>out=[0,3,4,4,4,4,4,4,4,4]</code> — pure noise.</li>
+          <li><span class="wn">Epoch ~5:</span> loss has dropped substantially; some positions are correct, not all.</li>
+          <li><span class="wn">Epoch 20:</span> <code>src=[0,1,2,3,4,5,6,7,8,9]</code> &rarr; <code>out=[0,1,2,3,4,5,6,7,8,9]</code> — a perfect copy.</li>
+        </ol>
+      </div>
+      <div class="margin-note" style="max-width:600px;"><span class="mtag">Analogy</span>Like teaching a child to repeat a sequence of numbers back to you — trivial for a human, but it confirms every gear in the machine turns correctly before scaling up to real language.</div>
+    </section>
+
+    <div class="chapter-nav"><button class="next-chapter-btn" data-goto="3">Continue to Part 3 — A Real World Example &rarr;</button></div>
+  </article>
+
+  <!-- ======================= CHAPTER 3 ======================= -->
+  <article class="chapter" data-chapter="3">
+    <div class="chapter-hero">
+      <div class="chapter-eyebrow">Part 3 of 3</div>
+      <h1>A Real World Example</h1>
+      <p>Same architecture, same training recipe — now applied to a real German&rarr;English dataset, with real vocabularies, real padding, and a trained model whose attention we can actually inspect.</p>
+    </div>
+
+    <!-- 3.1 -->
+    <section class="entry" id="s-3-1">
+      <div class="entry-eyebrow">STEP 3.1</div>
+      <h2>Loading Real Data</h2>
+      <p class="dek">Moving from toy random numbers to real sentences: the Multi30k German&rarr;English dataset, roughly 30,000 sentence pairs of image captions.</p>
+      <div class="codepanel"><div class="fname">tokenize() &amp; build_vocabulary()</div><pre class="code"><span class="kw">def</span> <span class="fn">tokenize</span>(text, tokenizer):
+    <span class="kw">return</span> [tok.text <span class="kw">for</span> tok <span class="kw">in</span> tokenizer.tokenizer(text)]
+
+vocab_src = build_vocab_from_iterator(
+    yield_tokens(train + val + test, tokenize_de, index=0),
+    min_freq=2,                                          <span class="cm"># drop words seen only once</span>
+    specials=["&lt;s&gt;", "&lt;/s&gt;", "&lt;blank&gt;", "&lt;unk&gt;"])</pre></div>
+      <p class="body-text">Every sentence is split into word tokens with spaCy (e.g. <code>"Zwei Frauen."</code> &rarr; <code>["Zwei", "Frauen", "."]</code>). Every unique token seen at least <code>min_freq=2</code> times gets an integer id, building two separate vocabularies — one per language. Four special tokens are reserved: <code>&lt;s&gt;</code>, <code>&lt;/s&gt;</code>, <code>&lt;blank&gt;</code> (padding), <code>&lt;unk&gt;</code> (unknown word).</p>
+      <div class="ledger">
+        <div class="ledger-row"><span class="lk">German vocab</span><span class="lv">59,981 tokens</span><span class="note"># from the actual notebook run</span></div>
+        <div class="ledger-row"><span class="lk">English vocab</span><span class="lv">36,745 tokens</span></div>
+      </div>
+      <div class="callout why"><span class="ctag">Why min_freq=2 and &lt;unk&gt;?</span>Real text contains typos and one-off rare words. Giving each its own embedding would bloat the vocabulary and waste capacity. Words below the frequency threshold all map to the shared <code>&lt;unk&gt;</code> id, and the model learns one general "unknown word" representation instead.</div>
+    </section>
+
+    <!-- 3.2 -->
+    <section class="entry" id="s-3-2">
+      <div class="entry-eyebrow">STEP 3.2</div>
+      <h2>Batching for Speed</h2>
+      <p class="dek">Real sentences have wildly different lengths. This is the concrete version of the padding idea introduced back in step 2.1.</p>
+      <div class="codepanel"><div class="fname">collate_batch() — trimmed</div><pre class="code"><span class="kw">def</span> <span class="fn">collate_batch</span>(batch, src_pipeline, tgt_pipeline, src_vocab, tgt_vocab, device, max_padding=128, pad_id=2):
+    <span class="kw">for</span> (_src, _tgt) <span class="kw">in</span> batch:
+        processed_src = torch.cat([bs_id, src_vocab(src_pipeline(_src)), eos_id])
+        src_list.append(pad(processed_src, (0, max_padding - len(processed_src)), value=pad_id))
+    <span class="kw">return</span> torch.stack(src_list), torch.stack(tgt_list)</pre></div>
+      <div class="callout walk"><span class="ctag">Two sentences, batched together</span>
+        <table class="numtable" style="margin-top:6px;">
+          <tr><th></th><th>0</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th></tr>
+          <tr><th>"Zwei Frauen." (short)</th><td>&lt;s&gt;</td><td>Zwei</td><td>Frauen</td><td>.</td><td>&lt;/s&gt;</td><td class="hl">&lt;pad&gt;</td><td class="hl">&lt;pad&gt;</td></tr>
+          <tr><th>"Ein Mann rennt schnell." (long)</th><td>&lt;s&gt;</td><td>Ein</td><td>Mann</td><td>rennt</td><td>schnell</td><td>.</td><td>&lt;/s&gt;</td></tr>
+        </table>
+        <p class="body-text" style="margin:8px 0 0;">The short sentence needs 2 padding tokens to match the long one's length, so both rows can sit in the same rectangular tensor. This is exactly the padding half of the mask from step 2.1, now applied per-sentence within a real batch.</p>
+      </div>
+      <div class="margin-note" style="max-width:600px;"><span class="mtag">Analogy</span>Like packing boxes of different sizes into a truck — every box gets padded up to the same crate size so they stack neatly, even if some crates end up mostly empty air.</div>
+    </section>
+
+    <!-- 3.3 -->
+    <section class="entry" id="s-3-3">
+      <div class="entry-eyebrow">STEP 3.3</div>
+      <h2>Training at Scale</h2>
+      <p class="dek">Exactly the same recipe as the copy task in Part 2 — just with a real vocabulary, real sentences, and optionally multiple GPUs.</p>
+      <div class="codepanel"><div class="fname">train_worker() — trimmed</div><pre class="code"><span class="kw">def</span> <span class="fn">train_worker</span>(gpu, ngpus_per_node, vocab_src, vocab_tgt, ..., config):
+    model = make_model(len(vocab_src), len(vocab_tgt), N=6)   <span class="cm"># real vocab sizes now</span>
+    <span class="kw">if</span> is_distributed:
+        model = DDP(model, device_ids=[gpu])   <span class="cm"># split batches across GPUs, sync gradients</span>
+    criterion = LabelSmoothing(size=len(vocab_tgt), padding_idx=pad_idx, smoothing=0.1)
+    optimizer = torch.optim.Adam(model.parameters(), lr=config["base_lr"], betas=(0.9, 0.98))
+    lr_scheduler = LambdaLR(optimizer, lr_lambda=<span class="kw">lambda</span> step: rate(step, d_model, 1, config["warmup"]))
+    <span class="kw">for</span> epoch <span class="kw">in</span> range(config["num_epochs"]):
+        run_epoch(train_dataloader, model, ..., optimizer, lr_scheduler, mode="train")</pre></div>
+      <p class="body-text">Nothing conceptually new — this is the same <code>make_model</code>, <code>LabelSmoothing</code>, <code>rate()</code>, and <code>run_epoch</code> from Parts 1 &amp; 2. The addition is <b>DistributedDataParallel (DDP)</b>: each of up to 8 GPUs gets its own model copy and a slice of the batch, computes its own forward/backward pass, then DDP averages all gradients before one shared optimizer step keeps every copy in sync.</p>
+      <div class="margin-note" style="max-width:600px;"><span class="mtag">Analogy</span>Same recipe, bigger kitchen. Splitting work across GPUs is like assigning chapters of a book to different translators working in parallel, then pooling what they learned.</div>
+    </section>
+
+    <!-- 3.4 -->
+    <section class="entry" id="s-3-4">
+      <div class="entry-eyebrow">STEP 3.4</div>
+      <h2>Checking the Output</h2>
+      <p class="dek">After training, greedy decoding produces an actual translation. Here's a real example from the trained model in the notebook.</p>
+      <div class="codepanel"><div class="fname">greedy_decode()</div><pre class="code"><span class="kw">def</span> <span class="fn">greedy_decode</span>(model, src, src_mask, max_len, start_symbol):
+    memory = model.encode(src, src_mask)
+    ys = torch.zeros(1, 1).fill_(start_symbol).type_as(src.data)
+    <span class="kw">for</span> i <span class="kw">in</span> range(max_len - 1):
+        out = model.decode(memory, src_mask, ys, subsequent_mask(ys.size(1)))
+        prob = model.generator(out[:, -1])
+        _, next_word = torch.max(prob, dim=1)      <span class="cm"># greedy: take the single best word</span>
+        ys = torch.cat([ys, next_word.reshape(1,1)], dim=1)
+    <span class="kw">return</span> ys</pre></div>
+      <div class="callout walk"><span class="ctag">Tracing it step by step</span>
+        <ol>
+          <li><span class="wn">Step 0:</span> <code>ys=[&lt;s&gt;]</code>. Decode &rarr; predicts <code>"Two"</code> &rarr; append.</li>
+          <li><span class="wn">Step 1:</span> <code>ys=[&lt;s&gt;,"Two"]</code>. Decode again (same <code>memory</code>) &rarr; predicts <code>"women"</code> &rarr; append.</li>
+          <li><span class="wn">Step 2:</span> <code>ys=[&lt;s&gt;,"Two","women"]</code> &rarr; predicts <code>"in"</code>. Continues until <code>&lt;/s&gt;</code>.</li>
+        </ol>
+      </div>
+      <div class="trans-row"><span class="trans-tag" style="color:var(--indigo);">Source (DE)</span><span class="trans-text">Zwei Frauen in pinkfarbenen T-Shirts und &lt;unk&gt; unterhalten sich vor einem &lt;unk&gt; .</span></div>
+      <div class="trans-row"><span class="trans-tag" style="color:var(--mustard);">Ground truth</span><span class="trans-text">Two women wearing pink T-shirts and blue jeans converse outside clothing store.</span></div>
+      <div class="trans-row"><span class="trans-tag" style="color:var(--red);">Model output</span><span class="trans-text">Two women in pink shirts and face are talking in front of a &lt;unk&gt; .</span></div>
+      <p class="body-text">Imperfect but clearly in the right neighborhood. Multi30k is small (~30K pairs) next to the 4.5M-pair WMT dataset the original paper used, so rough edges are expected; more data and beam search both close the gap further.</p>
+    </section>
+
+    <!-- 3.5 -->
+    <section class="entry" id="s-3-5">
+      <div class="entry-eyebrow">STEP 3.5</div>
+      <h2>Peeking Inside: Attention Visualization</h2>
+      <p class="dek">Once trained, you can extract each layer's attention weight matrix and plot it as a heatmap — a direct look at what the model is "thinking."</p>
+      <div class="codepanel"><div class="fname">Reaching into a trained model</div><pre class="code">encoder_attn  = model.encoder.layers[layer].self_attn.attn     <span class="cm"># source looking at source</span>
+decoder_self  = model.decoder.layers[layer].self_attn.attn     <span class="cm"># target looking at earlier target</span>
+decoder_cross = model.decoder.layers[layer].src_attn.attn      <span class="cm"># target looking at source (memory)</span></pre></div>
+      <p class="body-text">Rows = the word asking the question. Columns = the word being looked at. Brighter = stronger attention.</p>
+      <div class="btn-row">
+        <button class="mbtn active" data-layer="1">Layer 1</button>
+        <button class="mbtn" data-layer="2">Layer 2</button>
+        <button class="mbtn" data-layer="3">Layer 3</button>
+        <button class="mbtn" data-layer="4">Layer 4</button>
+        <button class="mbtn" data-layer="5">Layer 5</button>
+        <button class="mbtn" data-layer="6">Layer 6</button>
+      </div>
+      <div id="heatmapWrap"></div>
+      <p class="body-text" style="font-size:13.5px; color:var(--ink-faint);">Illustrative pattern for encoder self-attention — actual weights depend on the trained checkpoint, but this is the same visualization shape as the notebook's <code>attn_map()</code>.</p>
+      <div class="margin-note" style="max-width:600px;"><span class="mtag">Analogy</span>Like an X-ray of the model's reading habits: for "drill," you can see exactly which German word ("Bohrer") it was looking at most while writing it.</div>
+    </section>
+
+  </article>
+
+  </main>
+</div>
+
+<script>
+const chapterEntries = {1:['1-1','1-2','1-3','1-4','1-5','1-6','1-7','1-8'],2:['2-1','2-2','2-3','2-4','2-5'],3:['3-1','3-2','3-3','3-4','3-5']};
+let activeChapter = 1;
+
+function setChapter(n, scrollToId){
+  activeChapter = n;
+  document.querySelectorAll('.chapter').forEach(c=> c.classList.toggle('active', parseInt(c.getAttribute('data-chapter'))===n));
+  document.querySelectorAll('.chapter-tab').forEach(t=> t.classList.toggle('active', parseInt(t.getAttribute('data-chapter'))===n));
+  document.querySelectorAll('.toc').forEach(t=> t.style.display = (parseInt(t.getAttribute('data-toc'))===n) ? 'block' : 'none');
+  window.scrollTo({top:0, behavior:'instant'});
+  closeSidebar();
+  setupObserver();
+  if(scrollToId){ setTimeout(()=>{ document.getElementById(scrollToId)?.scrollIntoView({behavior:'smooth'}); }, 60); }
+}
+document.querySelectorAll('.chapter-tab').forEach(tab=>{
+  tab.addEventListener('click', ()=> setChapter(parseInt(tab.getAttribute('data-chapter'))));
+});
+document.querySelectorAll('.next-chapter-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=> setChapter(parseInt(btn.getAttribute('data-goto'))));
+});
+document.querySelectorAll('.toc-link').forEach(link=>{
+  link.addEventListener('click', (e)=>{ closeSidebar(); });
+});
+
+const sidebarEl = null;
+const overlay = document.getElementById('overlay');
+const menuBtn = document.getElementById('menuBtn');
+function openSidebar(){
+  document.querySelectorAll('.toc').forEach(t=>{ if(parseInt(t.getAttribute('data-toc'))===activeChapter){ t.classList.add('open'); } });
+  overlay.classList.add('show');
+}
+function closeSidebar(){
+  document.querySelectorAll('.toc').forEach(t=> t.classList.remove('open'));
+  overlay.classList.remove('show');
+}
+menuBtn.addEventListener('click', ()=>{
+  const open = document.querySelector('.toc.open');
+  open ? closeSidebar() : openSidebar();
+});
+overlay.addEventListener('click', closeSidebar);
+
+let observer = null;
+function setupObserver(){
+  if(observer) observer.disconnect();
+  observer = new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{
+      if(entry.isIntersecting){
+        const id = entry.target.id;
+        document.querySelectorAll('.toc-link').forEach(l=> l.classList.toggle('active', l.getAttribute('href')==='#'+id));
+      }
+    });
+  }, {rootMargin:'-15% 0px -70% 0px', threshold:0});
+  document.querySelectorAll(`.chapter[data-chapter="${activeChapter}"] .entry`).forEach(sec=> observer.observe(sec));
+}
+setupObserver();
+
+window.addEventListener('scroll', ()=>{
+  const doc = document.documentElement;
+  const pct = (doc.scrollTop) / (doc.scrollHeight - doc.clientHeight) * 100;
+  document.getElementById('scrollbar').style.width = pct+'%';
+});
+
+/* ---------------- mini accordions ---------------- */
+function buildMiniAcc(containerId, items){
+  const container = document.getElementById(containerId);
+  items.forEach((item,i)=>{
+    const el = document.createElement('div');
+    el.className = 'mini-acc-item' + (i===0 ? ' open' : '');
+    el.innerHTML = `
+      <div class="mini-acc-head">
+        <div><span class="mini-acc-name">${item.name}</span><span class="mini-acc-sub">${item.sub||''}</span></div>
+        <svg class="mini-chevron" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="mini-acc-body"><div class="mini-acc-body-inner">
+        ${item.code?`<div class="codepanel" style="margin-top:8px;"><pre class="code">${item.code}</pre></div>`:''}
+        <p class="body-text">${item.explain}</p>
+        ${item.numtable?item.numtable:''}
+        ${item.why?`<div class="callout why"><span class="ctag">Why it matters</span>${item.why}</div>`:''}
+        ${item.io?`<div class="ledger">${item.io}</div>`:''}
+        ${item.analogy?`<div class="margin-note" style="max-width:600px;"><span class="mtag">Analogy</span>${item.analogy}</div>`:''}
+      </div></div>`;
+    el.querySelector('.mini-acc-head').addEventListener('click', ()=> el.classList.toggle('open'));
+    container.appendChild(el);
+  });
+}
+
+buildMiniAcc('acc-encoder', [
+  {name:'clones()', sub:'helper function', code:`<span class="kw">def</span> <span class="fn">clones</span>(module, N):
+    <span class="kw">return</span> nn.ModuleList([copy.deepcopy(module) <span class="kw">for</span> _ <span class="kw">in</span> range(N)])`,
+   explain:'Not a neural network layer itself — a plain utility that makes N fully independent copies of a module, each with its own separate, separately-trainable weights.',
+   why:'Without deepcopy, all 6 "copies" would be the same object in memory — updating layer 1\'s weights would silently also change layers 2–6, since they\'d all point at identical parameters.',
+   io:`<div class="ledger-row"><span class="lk">input</span><span class="lv">one EncoderLayer, N=6</span></div><div class="ledger-row"><span class="lk">output</span><span class="lv">6 independent EncoderLayers</span></div>`,
+   analogy:'Like photocopying a blank form 6 times — identical template, but each copy gets filled in independently during training.'},
+
+  {name:'LayerNorm', sub:'stabilizes scale — with worked numbers', code:`<span class="kw">class</span> <span class="fn">LayerNorm</span>(nn.Module):
+    <span class="kw">def</span> __init__(self, features, eps=1e-6):
+        self.a_2 = nn.Parameter(torch.ones(features))   <span class="cm"># learnable SCALE, starts at 1</span>
+        self.b_2 = nn.Parameter(torch.zeros(features))  <span class="cm"># learnable SHIFT, starts at 0</span>
+        self.eps = eps
+
+    <span class="kw">def</span> forward(self, x):
+        mean = x.mean(-1, keepdim=<span class="kw">True</span>)
+        std = x.std(-1, keepdim=<span class="kw">True</span>)
+        <span class="kw">return</span> self.a_2 * (x - mean) / (std + self.eps) + self.b_2`,
+   explain:'This does two separate things, and it is worth telling them apart. Step one is plain normalization: subtract the mean and divide by the standard deviation so the vector has mean ≈ 0 and spread ≈ 1 — the same 4 numbers, just rescaled. Step two is the part people gloss over: <b>a_2</b> ("scale" or "gain") and <b>b_2</b> ("shift" or "bias") are learnable parameters — one value per dimension of the vector — that stretch or shrink each dimension and re-center it, AFTER normalization.',
+   numtable:`<table class="numtable">
+     <tr><th>quantity</th><th>dim 0</th><th>dim 1</th><th>dim 2</th><th>dim 3</th></tr>
+     <tr><th>x (raw input)</th><td>10</td><td>50</td><td>-30</td><td>8</td></tr>
+     <tr><th>normalized</th><td>0.018</td><td>1.431</td><td>-1.396</td><td>-0.053</td></tr>
+     <tr><th>a_2 (learned scale)</th><td>1.2</td><td>0.8</td><td>1.0</td><td>1.5</td></tr>
+     <tr><th>b_2 (learned shift)</th><td>0</td><td>0.1</td><td>-0.2</td><td>0</td></tr>
+     <tr><th>final output</th><td class="hl">0.021</td><td class="hl">1.245</td><td class="hl">-1.596</td><td class="hl">-0.079</td></tr>
+   </table>
+   <p class="body-text" style="font-size:14px; color:var(--ink-muted);">mean = (10+50-30+8)/4 = 9.5, std ≈ 28.3. Normalized values above are (x−9.5)/28.3. The final row multiplies by a_2 and adds b_2, dimension by dimension — dimension 2 gets amplified (×1.0) and pulled down (−0.2), while dimension 3 gets amplified 1.5× with no shift.</p>`,
+   why:'a_2 and b_2 start at exactly 1 and 0, so at the very beginning of training LayerNorm is pure, unmodified normalization — it has no effect beyond rescaling. As training proceeds, the model can learn ANY a_2 and b_2 it finds useful, including values that would fully reverse the normalization (setting a_2 back to the original standard deviation and b_2 back to the original mean). This matters because it means LayerNorm never permanently throws away information — it just gives the network a well-behaved starting point, while leaving it free to recover the raw scale for any dimension where that turns out to help.',
+   io:``,
+   analogy:'Normalizing is like turning every dimension\'s volume knob to the same neutral middle setting. a_2 and b_2 are the network then reaching in and nudging a few of those knobs back up or down to whatever level actually works best — some dimensions matter more than others, and the network learns which.'},
+
+  {name:'SublayerConnection', sub:'residual + norm wrapper', code:`<span class="kw">def</span> forward(self, x, sublayer):
+    <span class="kw">"Apply residual connection to any sublayer with the same size."</span>
+    <span class="kw">return</span> x + self.dropout(sublayer(self.norm(x)))`,
+   explain:'A generic wrapper: normalize the input, run it through whichever sub-step is passed in (self-attention or feed-forward), apply dropout, then add the ORIGINAL, un-normalized input back on top. That final addition is the "residual" or "skip" connection.',
+   why:'Without the "+x" at the end, gradients must flow back through all 6 stacked layers unaided, which in deep networks often causes them to shrink toward zero before reaching the earliest layers (vanishing gradients), stalling learning there. The residual connection gives gradients a direct, short path backward through every layer.',
+   analogy:'Like scribbling notes in a book\'s margin (the sublayer\'s output) while keeping the original text (x) fully intact — you end up with both, not a replacement.'},
+
+  {name:'EncoderLayer', sub:'self-attn + feed-forward', code:`<span class="kw">def</span> forward(self, x, mask):
+    x = self.sublayer[0](x, <span class="kw">lambda</span> x: self.self_attn(x, x, x, mask))
+    <span class="kw">return</span> self.sublayer[1](x, self.feed_forward)`,
+   explain:'One full encoder layer: first every word attends to every other word (self-attention — the same x used for query, key, and value, hence "self"), then each word is independently reprocessed (feed-forward). Both steps are wrapped in the SublayerConnection above.',
+   io:`<div class="ledger-row"><span class="lk">step 1</span><span class="lv">self_attn(x, x, x, mask) — build context</span></div><div class="ledger-row"><span class="lk">step 2</span><span class="lv">feed_forward(x) — reprocess independently</span></div>`,
+   analogy:'"Cats" learns "love" is the verb acting on it by looking around the sentence during self-attention, then quietly thinks that over during feed-forward.'},
+
+  {name:'Encoder', sub:'the full stack of 6', code:`<span class="kw">def</span> forward(self, x, mask):
+    <span class="kw">for</span> layer <span class="kw">in</span> self.layers:
+        x = layer(x, mask)
+    <span class="kw">return</span> self.norm(x)`,
+   explain:'Layer 1\'s output becomes layer 2\'s input, whose output becomes layer 3\'s input, and so on through all 6 — each layer builds on the previous one\'s refined understanding. One final LayerNorm runs after the last layer.',
+   io:`<div class="ledger-row"><span class="lk">input</span><span class="lv">"I love cats" — [1,3,512]</span></div><div class="ledger-row"><span class="lk">output</span><span class="lv">memory — [1,3,512], same shape, richer content</span></div>`,
+   analogy:'Passing a draft through 6 editors in sequence, each handing their improved version to the next.'}
+]);
+
+buildMiniAcc('acc-decoder', [
+  {name:'DecoderLayer', sub:'self-attn + cross-attn + feed-forward', code:`<span class="kw">def</span> forward(self, x, memory, src_mask, tgt_mask):
+    m = memory
+    x = self.sublayer[0](x, <span class="kw">lambda</span> x: self.self_attn(x, x, x, tgt_mask))
+    x = self.sublayer[1](x, <span class="kw">lambda</span> x: self.src_attn(x, m, m, src_mask))
+    <span class="kw">return</span> self.sublayer[2](x, self.feed_forward)`,
+   explain:'Three SublayerConnection-wrapped steps. (1) Self-attention over target words so far, masked with tgt_mask. (2) Cross-attention: the target\'s current representations become queries, while the encoder\'s memory supplies both keys and values. (3) Feed-forward, exactly as in the encoder.',
+   io:`<div class="ledger-row"><span class="lk">step 1</span><span class="lv">self_attn(x, x, x, tgt_mask)</span></div><div class="ledger-row"><span class="lk">step 2</span><span class="lv">src_attn(x, memory, memory, src_mask)</span></div><div class="ledger-row"><span class="lk">step 3</span><span class="lv">feed_forward(x)</span></div>`,
+   analogy:'Step 2 is the decoder literally asking: "given everything I\'ve written, which part of the source is relevant right now?"'},
+  {name:'Decoder', sub:'the full stack of 6', code:`<span class="kw">def</span> forward(self, x, memory, src_mask, tgt_mask):
+    <span class="kw">for</span> layer <span class="kw">in</span> self.layers:
+        x = layer(x, memory, src_mask, tgt_mask)
+    <span class="kw">return</span> self.norm(x)`,
+   explain:'Structurally identical to the Encoder\'s stacking loop, but every layer also receives the fixed encoder memory plus both masks, since the decoder consults the source at every layer.',
+   io:`<div class="ledger-row"><span class="lk">input</span><span class="lv">"J'aime les chats" — [1,4,512], memory — [1,3,512]</span></div><div class="ledger-row"><span class="lk">output</span><span class="lv">[1,4,512], ready for the Generator</span></div>`}
+]);
+
+/* ---------------- flow diagram ---------------- */
+const flowData = {
+  src:{title:'Source sentence', text:'The raw input sentence, represented as token IDs.', io:`<div class="ledger-row"><span class="lk">example</span><span class="lv">"I love cats" &rarr; [5, 42, 17]</span></div>`},
+  src_embed:{title:'src_embed', text:'Converts token IDs into 512-number vectors, then adds positional information.', io:`<div class="ledger-row"><span class="lk">in</span><span class="lv">[5, 42, 17]</span></div><div class="ledger-row"><span class="lk">out</span><span class="lv">[1, 3, 512]</span></div>`},
+  encode:{title:'Encoder', text:'Reads the whole source sentence at once and builds memory.', io:`<div class="ledger-row"><span class="lk">in</span><span class="lv">[1, 3, 512]</span></div><div class="ledger-row"><span class="lk">out</span><span class="lv">memory — [1, 3, 512]</span></div>`},
+  memory:{title:'memory', text:'The encoder\'s finished understanding of the source, consulted by every decoder layer via cross-attention.', io:`<div class="ledger-row"><span class="lk">shape</span><span class="lv">[1, 3, 512]</span></div>`},
+  tgt:{title:'Target sentence (so far)', text:'During training, the whole correct target is fed in at once, with masking to prevent cheating.', io:`<div class="ledger-row"><span class="lk">example</span><span class="lv">"J'aime les" &rarr; token ids</span></div>`},
+  tgt_embed:{title:'tgt_embed', text:'Same idea as src_embed, for the target vocabulary.', io:`<div class="ledger-row"><span class="lk">out</span><span class="lv">[1, 4, 512]</span></div>`},
+  decoder:{title:'Decoder', text:'Generates output word by word: self-attention (masked), cross-attention onto memory, feed-forward.', io:`<div class="ledger-row"><span class="lk">out</span><span class="lv">[1, 4, 512]</span></div>`},
+  generator:{title:'Generator', text:'Linear layer + log-softmax converts decoder output into actual word probabilities.', io:`<div class="ledger-row"><span class="lk">out</span><span class="lv">[1, 10000] — e.g. "chats" = 92%</span></div>`}
+};
+document.querySelectorAll('.flow-node[data-node]').forEach(node=>{
+  const key = node.getAttribute('data-node');
+  if(!flowData[key]) return;
+  node.addEventListener('click', ()=>{
+    document.querySelectorAll('.flow-node').forEach(n=>n.classList.remove('active'));
+    node.classList.add('active');
+    document.getElementById('fd-title').textContent = flowData[key].title;
+    document.getElementById('fd-text').innerHTML = flowData[key].text;
+    document.getElementById('fd-io').innerHTML = flowData[key].io;
+  });
+});
+
+/* ---------------- masking grids ---------------- */
+const targetWords = ['J\'aime','les','chats','<PAD>'];
+const maskDefs = { padding:(i,j)=> j<3, subsequent:(i,j)=> j<=i, combined:(i,j)=> (j<=i)&&(j<3) };
+const maskExplain = {
+  padding:'Every real word may attend to every other real word — but nothing may attend to the fake &lt;PAD&gt; token.',
+  subsequent:'Each word may only attend to itself and earlier words — never later ones.',
+  combined:'The real tgt_mask: both rules apply at once — earlier-or-equal position AND not padding.'
+};
+function renderMaskGrid(mode){
+  const table = document.getElementById('mgrid');
+  let html = '<tr><th></th>';
+  targetWords.forEach(w=> html += `<th>${w}</th>`);
+  html += '</tr>';
+  targetWords.forEach((rowWord,i)=>{
+    html += `<tr><th>${rowWord}</th>`;
+    targetWords.forEach((colWord,j)=>{
+      const allowed = maskDefs[mode](i,j);
+      html += `<td class="cell ${allowed?'allowed':'blocked'}">${allowed?'1':'0'}</td>`;
+    });
+    html += '</tr>';
+  });
+  table.innerHTML = html;
+  document.getElementById('mask-explain').innerHTML = maskExplain[mode];
+}
+renderMaskGrid('padding');
+document.querySelectorAll('.mbtn[data-mask]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.mbtn[data-mask]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    renderMaskGrid(btn.getAttribute('data-mask'));
+  });
+});
+
+/* second grid: concrete 9-token sentence from step 2.1 */
+(function(){
+  const words = ['<s>','the','cat','sat','on','the','mat','</s>','<pad>'];
+  const n = words.length;
+  const table = document.getElementById('mgrid2');
+  if(!table) return;
+  let html = '<tr><th></th>';
+  words.forEach(w=> html += `<th>${w}</th>`);
+  html += '</tr>';
+  for(let i=0;i<n;i++){
+    html += `<tr><th>${words[i]}</th>`;
+    for(let j=0;j<n;j++){
+      const isPad = (words[j]==='<pad>');
+      const allowed = (j<=i) && !isPad;
+      html += `<td class="cell ${allowed?'allowed':'blocked'}">${allowed?'1':'0'}</td>`;
+    }
+    html += '</tr>';
+  }
+  table.innerHTML = html;
+})();
+
+/* ---------------- attention bars ---------------- */
+const attnWeights = { I:{I:0.55,love:0.30,cats:0.15}, love:{I:0.25,love:0.35,cats:0.40}, cats:{I:0.10,love:0.35,cats:0.55} };
+function renderBars(word){
+  const data = attnWeights[word];
+  const bars = document.getElementById('bars');
+  bars.innerHTML = '';
+  Object.entries(data).forEach(([w,val])=>{
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    row.innerHTML = `<span class="bar-label">${w}</span><div class="bar-track"><div class="bar-fill" style="width:0%"></div></div><span class="bar-pct">${Math.round(val*100)}%</span>`;
+    bars.appendChild(row);
+    requestAnimationFrame(()=>{ row.querySelector('.bar-fill').style.width = (val*100)+'%'; });
+  });
+}
+renderBars('I');
+document.querySelectorAll('.wbtn[data-word]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.wbtn[data-word]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    renderBars(btn.getAttribute('data-word'));
+  });
+});
+
+/* ---------------- forward/backward toggle ---------------- */
+const ffCaptions = {
+  forward:'Forward: input flows left to right through the network, exactly as it does the first time you run the model.',
+  backward:'Backward: PyTorch\'s autograd walks the same steps in reverse, computing how much each weight in w_1 and w_2 contributed to the final error.'
+};
+document.querySelectorAll('.mbtn[data-fb]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.mbtn[data-fb]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const mode = btn.getAttribute('data-fb');
+    const diagram = document.getElementById('ffdiagram');
+    diagram.classList.remove('forward','backward');
+    diagram.classList.add(mode);
+    document.getElementById('fb-caption').textContent = ffCaptions[mode];
+  });
+});
+
+/* ---------------- LR schedule chart ---------------- */
+function rate(step, modelSize, factor, warmup){
+  if(step===0) step=1;
+  return factor * (Math.pow(modelSize,-0.5) * Math.min(Math.pow(step,-0.5), step*Math.pow(warmup,-1.5)));
+}
+function drawLRChart(){
+  const svg = document.getElementById('lrChart');
+  if(!svg) return;
+  const W=600,H=220,pad=36;
+  const configs = [ {ms:512,w:4000,color:'#2f6b53'}, {ms:512,w:8000,color:'#8f6a17'}, {ms:256,w:4000,color:'#a63a3a'} ];
+  const steps = []; for(let s=0;s<=20000;s+=200) steps.push(s);
+  let maxY = 0;
+  const series = configs.map(c=>{
+    const ys = steps.map(s=>rate(s,c.ms,1,c.w));
+    maxY = Math.max(maxY, ...ys);
+    return {ys, color:c.color};
+  });
+  const xScale = s => pad + (s/20000)*(W-2*pad);
+  const yScale = y => (H-pad) - (y/maxY)*(H-2*pad);
+  let svgHtml = `<line x1="${pad}" y1="${H-pad}" x2="${W-pad}" y2="${H-pad}" stroke="#948b78" stroke-width="1"/>`;
+  svgHtml += `<line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H-pad}" stroke="#948b78" stroke-width="1"/>`;
+  svgHtml += `<text x="${W/2}" y="${H-8}" fill="#948b78" font-size="11" text-anchor="middle" font-family="IBM Plex Mono">training step</text>`;
+  svgHtml += `<text x="10" y="${pad-6}" fill="#948b78" font-size="11" font-family="IBM Plex Mono">learning rate</text>`;
+  series.forEach(s=>{
+    const points = s.ys.map((y,idx)=> `${xScale(steps[idx])},${yScale(y)}`).join(' ');
+    svgHtml += `<polyline points="${points}" fill="none" stroke="${s.color}" stroke-width="2.5"/>`;
+  });
+  svg.innerHTML = svgHtml;
+}
+drawLRChart();
+
+/* ---------------- label smoothing bars ---------------- */
+function renderLS(smoothing){
+  const size = 5, targetIdx = 2, confidence = 1-smoothing;
+  const fill = smoothing>0 ? smoothing/(size-2) : 0;
+  const dist = Array.from({length:size}, (_,i)=> i===targetIdx ? confidence : fill);
+  const wrap = document.getElementById('lsBars');
+  wrap.innerHTML = '';
+  dist.forEach((v,i)=>{
+    const col = document.createElement('div');
+    col.className = 'ls-bar-col';
+    col.innerHTML = `<span class="ls-bar-val">${(v*100).toFixed(0)}%</span><div class="ls-bar" style="height:0%"></div><span class="ls-bar-label">w${i}${i===targetIdx?' ✓':''}</span>`;
+    wrap.appendChild(col);
+    requestAnimationFrame(()=>{ col.querySelector('.ls-bar').style.height = (v*100)+'%'; });
+  });
+}
+renderLS(0);
+document.querySelectorAll('.mbtn[data-ls]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.mbtn[data-ls]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    renderLS(parseFloat(btn.getAttribute('data-ls')));
+  });
+});
+
+/* ---------------- attention heatmap ---------------- */
+const heatWords = ['Ein','kleiner','Junge','verwendet','Bohrer','.'];
+function seededRandom(seed){ let x = Math.sin(seed)*10000; return x - Math.floor(x); }
+function renderHeatmap(layer){
+  const wrap = document.getElementById('heatmapWrap');
+  if(!wrap) return;
+  const n = heatWords.length;
+  let html = '<div style="display:flex; gap:3px; margin-bottom:5px;"><span style="width:64px; display:inline-block;"></span>';
+  heatWords.forEach(w=> html += `<span style="flex:1; font-family:var(--mono); font-size:10.5px; color:var(--ink-faint); text-align:center;">${w}</span>`);
+  html += '</div>';
+  for(let r=0;r<n;r++){
+    html += `<div style="display:flex; gap:3px; align-items:center; margin-bottom:3px;"><span class="heat-row-label" style="width:64px; text-align:right; padding-right:7px;">${heatWords[r]}</span>`;
+    let rowVals = [];
+    for(let c=0;c<n;c++){
+      const seed = layer*97 + r*13 + c*7;
+      let v = seededRandom(seed);
+      if(c===r) v = v*0.4+0.5;
+      rowVals.push(v);
+    }
+    const sum = rowVals.reduce((a,b)=>a+b,0);
+    rowVals = rowVals.map(v=>v/sum);
+    for(let c=0;c<n;c++){
+      const v = rowVals[c];
+      const alpha = 0.12 + v*2.2;
+      html += `<div style="flex:1; aspect-ratio:1; border-radius:4px; background:rgba(42,61,143,${Math.min(alpha,0.92)}); border:1px solid rgba(33,28,20,0.1);" title="${(v*100).toFixed(1)}%"></div>`;
+    }
+    html += `</div>`;
+  }
+  wrap.innerHTML = html;
+}
+renderHeatmap(1);
+document.querySelectorAll('.mbtn[data-layer]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.mbtn[data-layer]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    renderHeatmap(parseInt(btn.getAttribute('data-layer')));
+  });
+});
+</script>
+
+</body>
+</html>
