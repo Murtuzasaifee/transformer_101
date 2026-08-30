@@ -1,0 +1,28 @@
+experiment_name: multi30k_transformer
+
+model:
+  n_layers: 6
+  d_model: 512
+  d_ff: 2048
+  n_heads: 8
+  dropout: 0.1
+
+data:
+  dataset_name: bentrevett/multi30k
+  source_lang: de
+  target_lang: en
+  max_padding: 72
+  vocab_cache_path: checkpoints/vocab.pt
+
+training:
+  num_epochs: 8
+  batch_size: 32
+  accum_iter: 10
+  base_lr: 1.0
+  warmup: 3000
+  label_smoothing: 0.1
+  distributed: false
+  checkpoint_dir: checkpoints
+  checkpoint_prefix: multi30k_model_
+  log_dir: logs
+  log_every_n_steps: 40
