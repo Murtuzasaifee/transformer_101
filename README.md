@@ -47,9 +47,10 @@ transformer_101/
 │   │   └── evaluate.py            #   check_outputs (source/target/prediction printout)
 │   ├── utils/
 │   │   └── logging_setup.py       #   console logging configuration
-│   └── config.py                  # Pydantic-typed model/data/training config, loaded from YAML
+│   └── config.py                  # Pydantic-typed model/data/training config, loaded from YAML + .env
 ├── configs/
-│   └── multi30k.yaml              # Default experiment config (architecture + training hyperparams)
+│   └── multi30k.yaml              # Default experiment config (architecture + baseline training hyperparams)
+├── .env.example                   # Template for per-run training overrides -> copy to .env
 ├── scripts/                       # CLI entrypoints, run these directly
 │   ├── sanity_check.py            #   fast CPU checks: imports, forward pass, train loop, logging
 │   ├── build_vocab.py             #   build/cache the DE/EN vocabulary
@@ -154,21 +155,41 @@ Builds and caches the DE/EN vocabulary from the Multi30k corpus (only needs to r
 uv run scripts/build_vocab.py --config configs/multi30k.yaml
 ```
 
-### 5. Train the model
+### 5. Configure the run (`.env`)
 
-Runs on GPU if available, otherwise CPU. Edit `configs/multi30k.yaml` to change architecture (`d_model`, `n_layers`, `n_heads`, ...) or training hyperparameters (epochs, batch size, warmup, ...).
+Training-run controls (epochs, batching, gradient accumulation, learning rate, checkpoint frequency) are read from a `.env` file at the repo root — copy the template and edit as needed:
+
+```bash
+cp .env.example .env
+```
+
+```dotenv
+NUM_EPOCHS=8                  # passes over the training data
+BATCH_SIZE=32                 # per-step batch size (split across GPUs if DISTRIBUTED=true)
+ACCUM_ITER=10                 # gradient accumulation steps; effective batch size = BATCH_SIZE * ACCUM_ITER
+BASE_LR=1.0                   # peak LR scale factor (Noam schedule)
+WARMUP=3000                   # warmup steps before LR starts decaying
+CHECKPOINT_EVERY_N_EPOCHS=10  # save an intermediate checkpoint every N epochs
+DISTRIBUTED=false             # train across all visible GPUs with DDP
+```
+
+Anything left unset falls back to `configs/multi30k.yaml`. Model architecture (`d_model`, `n_layers`, `n_heads`, ...) stays in the YAML config on purpose — those define what model you're training, not how a given run behaves, so they don't belong in per-run env overrides.
+
+### 6. Train the model
+
+Runs on GPU if available, otherwise CPU.
 
 ```bash
 # single GPU / CPU
 uv run scripts/train.py --config configs/multi30k.yaml
 
-# all visible GPUs, via DistributedDataParallel
+# all visible GPUs, via DistributedDataParallel (or set DISTRIBUTED=true in .env)
 uv run scripts/train.py --config configs/multi30k.yaml --distributed
 ```
 
-Checkpoints are written to `checkpoints/multi30k_model_<epoch>.pt` and `checkpoints/multi30k_model_final.pt`. Training progress streams to the console and is also written as structured JSONL to `logs/<experiment_name>_gpu<n>.jsonl` for dashboarding (`train_step`, `epoch_summary`, and `checkpoint` events, each timestamped).
+A final checkpoint is always written to `checkpoints/multi30k_model_final.pt`; intermediate checkpoints (`checkpoints/multi30k_model_<epoch>.pt`) are written every `CHECKPOINT_EVERY_N_EPOCHS` epochs. Training progress streams to the console and is also written as structured JSONL to `logs/<experiment_name>_gpu<n>.jsonl` for dashboarding (`train_step`, `epoch_summary`, and `checkpoint` events, each timestamped).
 
-### 6. Translate / inspect model outputs
+### 7. Translate / inspect model outputs
 
 Greedy-decodes a handful of validation examples and prints source, reference, and model translation.
 
@@ -213,7 +234,11 @@ $$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)
 
 ---
 
-## ⚙️ Configuration Reference (`configs/multi30k.yaml`)
+## ⚙️ Configuration Reference
+
+Two layers, lowest to highest precedence: **YAML** (`configs/multi30k.yaml`, architecture + baseline training settings) → **`.env`** (per-run training overrides).
+
+### `configs/multi30k.yaml`
 
 | Section | Key | Default | Meaning |
 | :--- | :--- | :--- | :--- |
@@ -224,13 +249,22 @@ $$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)
 | `model` | `dropout` | `0.1` | Dropout probability |
 | `data` | `max_padding` | `72` | Fixed sequence length after padding |
 | `data` | `vocab_cache_path` | `checkpoints/vocab.pt` | Cached vocabulary location |
-| `training` | `num_epochs` | `8` | Training epochs |
-| `training` | `batch_size` | `32` | Batch size (split across GPUs if distributed) |
-| `training` | `accum_iter` | `10` | Gradient accumulation steps |
-| `training` | `base_lr` / `warmup` | `1.0` / `3000` | Noam learning-rate schedule params |
 | `training` | `label_smoothing` | `0.1` | Label smoothing factor |
-| `training` | `distributed` | `false` | Train with DDP across all visible GPUs |
 | `training` | `checkpoint_dir` / `log_dir` | `checkpoints` / `logs` | Output locations |
+
+### `.env` (copy from `.env.example`)
+
+| Variable | Default | Meaning |
+| :--- | :--- | :--- |
+| `NUM_EPOCHS` | `8` | Training epochs |
+| `BATCH_SIZE` | `32` | Batch size (split across GPUs if distributed) |
+| `ACCUM_ITER` | `10` | Gradient accumulation steps (effective batch size = `BATCH_SIZE * ACCUM_ITER`) |
+| `BASE_LR` | `1.0` | Peak LR scale factor (Noam schedule) |
+| `WARMUP` | `3000` | Warmup steps before the LR starts decaying |
+| `CHECKPOINT_EVERY_N_EPOCHS` | `10` | Save an intermediate checkpoint every N epochs (final checkpoint always saved) |
+| `DISTRIBUTED` | `false` | Train with DDP across all visible GPUs |
+
+Deliberately kept small: only the knobs you'd realistically flip between runs on a server without editing YAML. Any variable left unset in `.env` falls through to the YAML value.
 
 Point any script at a different config with `--config path/to/your.yaml`, or omit `--config` to use built-in defaults.
 

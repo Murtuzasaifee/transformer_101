@@ -10,6 +10,7 @@ dependencies = [
     "datasets>=2.19",
     "pydantic>=2.6",
     "pyyaml>=6.0",
+    "python-dotenv>=1.0",
     "GPUtil>=1.4.0",
 ]
 

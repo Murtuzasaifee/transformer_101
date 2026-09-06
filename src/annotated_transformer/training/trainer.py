@@ -255,7 +255,12 @@ def train_worker(
         if cuda_available:
             torch.cuda.empty_cache()
 
-        if is_main_process:
+        # Save an intermediate checkpoint every `checkpoint_every_n_epochs`
+        # epochs (epoch is 0-indexed, so +1 makes "every 10" land on epochs
+        # 10, 20, 30, ... rather than 0, 10, 20). The final model is always
+        # saved separately after the loop, regardless of this cadence.
+        is_checkpoint_epoch = (epoch + 1) % config.training.checkpoint_every_n_epochs == 0
+        if is_main_process and is_checkpoint_epoch:
             file_path = os.path.join(
                 config.training.checkpoint_dir,
                 f"{config.training.checkpoint_prefix}{epoch:02d}.pt",
